@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Cyclone.Net</AssemblyName>
+    <RootNamespace>Cyclone.Net</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <PackageId>Cyclone.Net</PackageId>
+    <Description>Cyclone transport SDK: framing, handshake, heartbeat and TCP/UDP transports.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cyclone.Net.Tests" />
+  </ItemGroup>
+
+</Project>
