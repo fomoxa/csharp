@@ -1,6 +1,6 @@
-using Cyclone.Net;
+using Fomoxa.Net;
 
-namespace Cyclone.Net.Examples
+namespace Fomoxa.Net.Examples
 {
     public static class EchoSchema
     {

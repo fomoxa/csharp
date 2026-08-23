@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
     public static class MonotonicClock
     {

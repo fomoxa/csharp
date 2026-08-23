@@ -1,10 +1,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public static class HandshakeTests
     {
@@ -45,12 +45,12 @@ namespace Cyclone.Net.Tests
         {
             var schema = Schemas.Of(0xAABBCCDD11223344, Schemas.Message(7, 0x1111, 0x2222));
             var transport = new FakeTransport(TransportKind.Message);
-            using var connection = new CycloneConnection(transport, schema, Schemas.Config(), CycloneRole.Client, Zero);
+            using var connection = new FomoxaConnection(transport, schema, Schemas.Config(), FomoxaRole.Client, Zero);
 
             var frame = transport.TakeOutgoing();
             var payload = PayloadOf(frame);
 
-            Check.Equal(CycloneWire.HelloHeaderSize + CycloneWire.HelloEntrySize, payload.Length, "hello size");
+            Check.Equal(FomoxaWire.HelloHeaderSize + FomoxaWire.HelloEntrySize, payload.Length, "hello size");
             Check.Equal(2u, BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(0, 4)), "protocol version");
             Check.Equal(
                 0xAABBCCDD11223344ul,
@@ -69,7 +69,7 @@ namespace Cyclone.Net.Tests
             var events = server.Connection.Tick(Zero);
 
             Check.Equal((byte)0, Verdict(server.Transport), "verdict");
-            Check.True(Events.Has(events, CycloneEventKind.Ready), "peer became ready");
+            Check.True(Events.Has(events, FomoxaEventKind.Ready), "peer became ready");
         }
 
         private static void DifferentSchemasAgree()
@@ -90,7 +90,7 @@ namespace Cyclone.Net.Tests
             Check.Equal((byte)2, Verdict(server.Transport), "verdict");
             Check.Equal(
                 HandshakeFailure.SchemaConflict,
-                Events.First(events, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(events, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
         }
 
@@ -121,17 +121,17 @@ namespace Cyclone.Net.Tests
             var events = server.Connection.Tick(Zero);
 
             var query = PayloadOf(server.Transport.TakeOutgoing());
-            Check.Equal(CycloneWire.QueryVerdictByte, query[0], "query marker byte");
+            Check.Equal(FomoxaWire.QueryVerdictByte, query[0], "query marker byte");
             Check.Equal(1u, BinaryPrimitives.ReadUInt32LittleEndian(query.AsSpan(1, 4)), "one item asked for");
             Check.Equal(1u, BinaryPrimitives.ReadUInt32LittleEndian(query.AsSpan(5, 4)), "asked about message 1");
             Check.Equal((ushort)2, BinaryPrimitives.ReadUInt16LittleEndian(query.AsSpan(9, 2)), "asked at index 2");
-            Check.False(Events.Has(events, CycloneEventKind.Ready), "a query is not a verdict");
-            Check.False(Events.Has(events, CycloneEventKind.HandshakeFailed), "a query never ends the session");
+            Check.False(Events.Has(events, FomoxaEventKind.Ready), "a query is not a verdict");
+            Check.False(Events.Has(events, FomoxaEventKind.HandshakeFailed), "a query never ends the session");
 
             server.Transport.Deliver(Wire.QueryReply((1, 20)));
             var second = server.Connection.Tick(Zero);
             Check.Equal((byte)0, Verdict(server.Transport), "verdict after the reply");
-            Check.True(Events.Has(second, CycloneEventKind.Ready), "peer became ready");
+            Check.True(Events.Has(second, FomoxaEventKind.Ready), "peer became ready");
         }
 
         private static void ServerHasNoFields()
@@ -149,7 +149,7 @@ namespace Cyclone.Net.Tests
             var server = Server(Schemas.Of(1, Schemas.Message(1, 10, 20)));
             server.Transport.Deliver(Wire.Hello(2, 999, (1, 3, 30)));
             server.Connection.Tick(Zero);
-            Check.Equal(CycloneWire.QueryVerdictByte, PayloadOf(server.Transport.TakeOutgoing())[0], "query sent");
+            Check.Equal(FomoxaWire.QueryVerdictByte, PayloadOf(server.Transport.TakeOutgoing())[0], "query sent");
 
             server.Transport.Deliver(Wire.QueryReply((1, 20)));
             server.Connection.Tick(Zero);
@@ -215,7 +215,7 @@ namespace Cyclone.Net.Tests
             Check.Equal((byte)1, Verdict(server.Transport), "verdict");
             Check.Equal(
                 HandshakeFailure.VersionMismatch,
-                Events.First(events, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(events, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
         }
 
@@ -226,7 +226,7 @@ namespace Cyclone.Net.Tests
             var shortened = new byte[hello.Length - 1];
             Array.Copy(hello, shortened, shortened.Length);
             BinaryPrimitives.WriteUInt32LittleEndian(
-                shortened.AsSpan(1, 4), (uint)(shortened.Length - CycloneWire.HandshakeFrameHeaderSize));
+                shortened.AsSpan(1, 4), (uint)(shortened.Length - FomoxaWire.HandshakeFrameHeaderSize));
 
             server.Transport.Deliver(shortened);
             server.Connection.Tick(Zero);
@@ -236,7 +236,7 @@ namespace Cyclone.Net.Tests
         private static void HugeCount()
         {
             var server = Server(Schemas.Of(1, Schemas.Message(1, 10)));
-            var payload = new byte[CycloneWire.HelloHeaderSize];
+            var payload = new byte[FomoxaWire.HelloHeaderSize];
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(0, 4), 2);
             BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(4, 8), 999);
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(12, 4), uint.MaxValue);
@@ -256,7 +256,7 @@ namespace Cyclone.Net.Tests
 
             Check.Equal(
                 HandshakeFailure.Corrupt,
-                Events.First(events, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(events, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
         }
 
@@ -267,8 +267,8 @@ namespace Cyclone.Net.Tests
 
             client.Transport.Deliver(Wire.Query((1, 2)));
             var first = client.Connection.Tick(Zero);
-            Check.False(Events.Has(first, CycloneEventKind.Ready), "a query is not a verdict");
-            Check.False(Events.Has(first, CycloneEventKind.HandshakeFailed), "a query never ends the session");
+            Check.False(Events.Has(first, FomoxaEventKind.Ready), "a query is not a verdict");
+            Check.False(Events.Has(first, FomoxaEventKind.HandshakeFailed), "a query never ends the session");
             var reply = PayloadOf(client.Transport.TakeOutgoing());
             Check.Equal(1u, BinaryPrimitives.ReadUInt32LittleEndian(reply.AsSpan(0, 4)), "one item answered");
             Check.Equal(20ul, BinaryPrimitives.ReadUInt64LittleEndian(reply.AsSpan(8, 8)), "prefix at index 2");
@@ -277,7 +277,7 @@ namespace Cyclone.Net.Tests
             var second = client.Connection.Tick(Zero);
             Check.Equal(
                 HandshakeFailure.Corrupt,
-                Events.First(second, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(second, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
         }
 
@@ -290,7 +290,7 @@ namespace Cyclone.Net.Tests
             var events = client.Connection.Tick(Zero);
             Check.Equal(
                 HandshakeFailure.Corrupt,
-                Events.First(events, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(events, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
         }
 
@@ -303,12 +303,12 @@ namespace Cyclone.Net.Tests
             client.Connection.Tick(TimeSpan.FromSeconds(4));
             client.Transport.Deliver(Wire.Query((1, 2)));
             var atFour = client.Connection.Tick(TimeSpan.FromSeconds(4));
-            Check.False(Events.Has(atFour, CycloneEventKind.HandshakeFailed), "still handshaking at four seconds");
+            Check.False(Events.Has(atFour, FomoxaEventKind.HandshakeFailed), "still handshaking at four seconds");
 
             var atFive = client.Connection.Tick(TimeSpan.FromSeconds(5));
             Check.Equal(
                 HandshakeFailure.Timeout,
-                Events.First(atFive, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(atFive, FomoxaEventKind.HandshakeFailed).Failure,
                 "the query round did not restart the deadline");
         }
 
@@ -318,12 +318,12 @@ namespace Cyclone.Net.Tests
             client.Transport.TakeOutgoing();
 
             Check.False(
-                Events.Has(client.Connection.Tick(TimeSpan.FromSeconds(4)), CycloneEventKind.HandshakeFailed),
+                Events.Has(client.Connection.Tick(TimeSpan.FromSeconds(4)), FomoxaEventKind.HandshakeFailed),
                 "nothing has failed at four seconds");
             var events = client.Connection.Tick(TimeSpan.FromSeconds(5));
             Check.Equal(
                 HandshakeFailure.Timeout,
-                Events.First(events, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(events, FomoxaEventKind.HandshakeFailed).Failure,
                 "failure reason");
             Check.Equal(SessionState.Closed, client.Connection.State, "session state");
         }
@@ -358,7 +358,7 @@ namespace Cyclone.Net.Tests
             client.Transport.TakeOutgoing();
             client.Transport.Deliver(Wire.Verdict(0));
             var events = client.Connection.Tick(Zero);
-            Check.True(Events.Has(events, CycloneEventKind.Ready), "ready event");
+            Check.True(Events.Has(events, FomoxaEventKind.Ready), "ready event");
             Check.Equal(SendStatus.Sent, client.Connection.Send(1, new byte[] { 1 }), "send after ready");
         }
 
@@ -369,7 +369,7 @@ namespace Cyclone.Net.Tests
 
             client.Transport.Deliver(Wire.DataFrame(1, new byte[] { 9 }));
             var events = client.Connection.Tick(Zero);
-            Check.False(Events.Has(events, CycloneEventKind.Message), "no message reaches the application");
+            Check.False(Events.Has(events, FomoxaEventKind.Message), "no message reaches the application");
             Check.Equal(SessionState.Handshaking, client.Connection.State, "the session is untouched");
         }
 
@@ -381,18 +381,18 @@ namespace Cyclone.Net.Tests
             client.Transport.Deliver(Wire.Ping());
             var events = client.Connection.Tick(Zero);
             Check.Bytes(new byte[] { (byte)FrameType.Pong }, client.Transport.TakeOutgoing(), "the client answers");
-            Check.False(Events.Has(events, CycloneEventKind.Ping), "no probe event before ready");
+            Check.False(Events.Has(events, FomoxaEventKind.Ping), "no probe event before ready");
         }
 
         private readonly struct Side
         {
-            public Side(CycloneConnection connection, FakeTransport transport)
+            public Side(FomoxaConnection connection, FakeTransport transport)
             {
                 Connection = connection;
                 Transport = transport;
             }
 
-            public CycloneConnection Connection { get; }
+            public FomoxaConnection Connection { get; }
 
             public FakeTransport Transport { get; }
         }
@@ -400,16 +400,16 @@ namespace Cyclone.Net.Tests
         private static Side Server(Schema schema, SessionConfig? config = null)
         {
             var transport = new FakeTransport(TransportKind.Message);
-            var connection = new CycloneConnection(
-                transport, schema, config ?? Schemas.Config(), CycloneRole.Server, Zero);
+            var connection = new FomoxaConnection(
+                transport, schema, config ?? Schemas.Config(), FomoxaRole.Server, Zero);
             return new Side(connection, transport);
         }
 
         private static Side Client(Schema schema, SessionConfig? config = null)
         {
             var transport = new FakeTransport(TransportKind.Message);
-            var connection = new CycloneConnection(
-                transport, schema, config ?? Schemas.Config(), CycloneRole.Client, Zero);
+            var connection = new FomoxaConnection(
+                transport, schema, config ?? Schemas.Config(), FomoxaRole.Client, Zero);
             return new Side(connection, transport);
         }
 
@@ -417,9 +417,9 @@ namespace Cyclone.Net.Tests
         {
             Check.Equal((byte)FrameType.Handshake, frame[0], "frame type");
             int length = (int)BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(1, 4));
-            Check.Equal(CycloneWire.HandshakeFrameHeaderSize + length, frame.Length, "handshake frame size");
+            Check.Equal(FomoxaWire.HandshakeFrameHeaderSize + length, frame.Length, "handshake frame size");
             var payload = new byte[length];
-            Array.Copy(frame, CycloneWire.HandshakeFrameHeaderSize, payload, 0, length);
+            Array.Copy(frame, FomoxaWire.HandshakeFrameHeaderSize, payload, 0, length);
             return payload;
         }
 

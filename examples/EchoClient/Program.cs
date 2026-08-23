@@ -2,10 +2,10 @@ using System;
 using System.Net;
 using System.Text;
 using System.Threading;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Examples.EchoClient
+namespace Fomoxa.Net.Examples.EchoClient
 {
     public static class Program
     {
@@ -19,7 +19,7 @@ namespace Cyclone.Net.Examples.EchoClient
             var remote = new IPEndPoint(IPAddress.Loopback, port);
 
             ITransport transport = udp ? UdpTransport.Connect(remote) : TcpTransport.Connect(remote);
-            using var connection = CycloneConnection.Connect(transport, schema, config);
+            using var connection = FomoxaConnection.Connect(transport, schema, config);
             Console.WriteLine($"connecting to {(udp ? "udp" : "tcp")} {remote}");
 
             int sent = 0;
@@ -31,19 +31,19 @@ namespace Cyclone.Net.Examples.EchoClient
                 {
                     switch (raised.Kind)
                     {
-                        case CycloneEventKind.Ready:
+                        case FomoxaEventKind.Ready:
                             Console.WriteLine("the server agreed on the schema");
                             break;
 
-                        case CycloneEventKind.HandshakeFailed:
+                        case FomoxaEventKind.HandshakeFailed:
                             Console.WriteLine($"handshake refused: {raised.Failure}");
                             return;
 
-                        case CycloneEventKind.Message:
+                        case FomoxaEventKind.Message:
                             Console.WriteLine($"echo: {Encoding.UTF8.GetString(raised.Payload.Span)}");
                             break;
 
-                        case CycloneEventKind.Disconnected:
+                        case FomoxaEventKind.Disconnected:
                             Console.WriteLine($"disconnected: {raised.Reason}");
                             return;
                     }
@@ -68,7 +68,7 @@ namespace Cyclone.Net.Examples.EchoClient
             {
                 foreach (var raised in connection.Tick(MonotonicClock.Now))
                 {
-                    if (raised.Kind == CycloneEventKind.Message)
+                    if (raised.Kind == FomoxaEventKind.Message)
                     {
                         Console.WriteLine($"echo: {Encoding.UTF8.GetString(raised.Payload.Span)}");
                     }

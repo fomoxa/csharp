@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Cyclone.Net.Framing;
+using Fomoxa.Net.Framing;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
     internal enum SessionEmit
     {
@@ -55,7 +55,7 @@ namespace Cyclone.Net
 
     internal sealed class Session
     {
-        private readonly CycloneRole role;
+        private readonly FomoxaRole role;
         private readonly Schema schema;
         private readonly SessionConfig config;
         private readonly TimeSpan createdAt;
@@ -70,7 +70,7 @@ namespace Cyclone.Net
         private bool awaitingQueryReply;
         private bool queryHandled;
 
-        public Session(CycloneRole role, Schema schema, SessionConfig config, TimeSpan now)
+        public Session(FomoxaRole role, Schema schema, SessionConfig config, TimeSpan now)
         {
             this.role = role;
             this.schema = schema;
@@ -88,7 +88,7 @@ namespace Cyclone.Net
 
         public SessionAction Start()
         {
-            if (role != CycloneRole.Client)
+            if (role != FomoxaRole.Client)
             {
                 return SessionAction.Nothing;
             }
@@ -98,7 +98,7 @@ namespace Cyclone.Net
             EnsureOut(frameSize);
             FrameLayout.WriteHandshakeHeader(outBuffer, payloadSize);
             HandshakeCodec.WriteHello(
-                outBuffer.AsSpan(CycloneWire.HandshakeFrameHeaderSize, payloadSize), schema);
+                outBuffer.AsSpan(FomoxaWire.HandshakeFrameHeaderSize, payloadSize), schema);
             return SessionAction.Frame(frameSize);
         }
 
@@ -132,7 +132,7 @@ namespace Cyclone.Net
                         : SessionAction.Nothing;
 
                 default:
-                    return role == CycloneRole.Client
+                    return role == FomoxaRole.Client
                         ? ClientHandshake(payload)
                         : ServerHandshake(payload);
             }
@@ -145,14 +145,14 @@ namespace Cyclone.Net
                 return SessionAction.Nothing;
             }
 
-            if (role == CycloneRole.Client
+            if (role == FomoxaRole.Client
                 && State == SessionState.Handshaking
                 && now - createdAt >= config.HandshakeTimeout)
             {
                 return Fail(0, HandshakeFailure.Timeout);
             }
 
-            bool heartbeatRuns = role == CycloneRole.Server || State == SessionState.Ready;
+            bool heartbeatRuns = role == FomoxaRole.Server || State == SessionState.Ready;
             if (!heartbeatRuns)
             {
                 return SessionAction.Nothing;
@@ -169,7 +169,7 @@ namespace Cyclone.Net
                 return SessionAction.Nothing;
             }
 
-            TimeSpan silenceWindow = role == CycloneRole.Server && State == SessionState.Handshaking
+            TimeSpan silenceWindow = role == FomoxaRole.Server && State == SessionState.Handshaking
                 ? config.HandshakeTimeout
                 : config.HeartbeatInterval;
 
@@ -201,6 +201,24 @@ namespace Cyclone.Net
                 graceful ? DisconnectReason.PeerClosed : DisconnectReason.TransportError);
         }
 
+        /// <summary>
+        /// Ends the session because the peer stopped reading and the pending
+        /// queue reached its ceiling. The reason is the same one a heartbeat
+        /// expiry raises: a peer that stops reading and a peer that stops
+        /// answering are both a peer that is not keeping up. The transport did
+        /// not break, so reporting a transport error would be untrue.
+        /// </summary>
+        public SessionAction ReportOverloaded()
+        {
+            if (terminalEmitted)
+            {
+                return SessionAction.Nothing;
+            }
+            State = SessionState.Closed;
+            terminalEmitted = true;
+            return SessionAction.Gone(DisconnectReason.Timeout);
+        }
+
         public void CloseLocal()
         {
             State = SessionState.Closed;
@@ -218,7 +236,7 @@ namespace Cyclone.Net
                 return Fail(0, HandshakeFailure.Corrupt);
             }
 
-            if (payload[0] == CycloneWire.QueryVerdictByte)
+            if (payload[0] == FomoxaWire.QueryVerdictByte)
             {
                 return ClientQuery(payload);
             }
@@ -249,14 +267,14 @@ namespace Cyclone.Net
             }
 
             int replySize = HandshakeCodec.QueryReplySize(count);
-            if (replySize > CycloneWire.MaxHandshakePayload)
+            if (replySize > FomoxaWire.MaxHandshakePayload)
             {
                 return Fail(0, HandshakeFailure.Corrupt);
             }
             int frameSize = FrameLayout.HandshakeFrameSize(replySize);
             EnsureOut(frameSize);
 
-            var reply = outBuffer.AsSpan(CycloneWire.HandshakeFrameHeaderSize, replySize);
+            var reply = outBuffer.AsSpan(FomoxaWire.HandshakeFrameHeaderSize, replySize);
             HandshakeCodec.WriteQueryReplyHeader(reply, count);
 
             for (int index = 0; index < count; index++)
@@ -299,7 +317,7 @@ namespace Cyclone.Net
             {
                 return Verdict(3);
             }
-            if (HandshakeCodec.HelloVersion(payload) != CycloneWire.ProtocolVersion)
+            if (HandshakeCodec.HelloVersion(payload) != FomoxaWire.ProtocolVersion)
             {
                 return Verdict(1);
             }
@@ -354,7 +372,7 @@ namespace Cyclone.Net
             EnsureOut(frameSize);
             FrameLayout.WriteHandshakeHeader(outBuffer, querySize);
             HandshakeCodec.WriteQuery(
-                outBuffer.AsSpan(CycloneWire.HandshakeFrameHeaderSize, querySize), asks);
+                outBuffer.AsSpan(FomoxaWire.HandshakeFrameHeaderSize, querySize), asks);
             awaitingQueryReply = true;
             return SessionAction.Frame(frameSize);
         }
@@ -392,7 +410,7 @@ namespace Cyclone.Net
             int frameSize = FrameLayout.HandshakeFrameSize(1);
             EnsureOut(frameSize);
             FrameLayout.WriteHandshakeHeader(outBuffer, 1);
-            outBuffer[CycloneWire.HandshakeFrameHeaderSize] = verdict;
+            outBuffer[FomoxaWire.HandshakeFrameHeaderSize] = verdict;
 
             if (verdict == 0)
             {

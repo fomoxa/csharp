@@ -1,4 +1,4 @@
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
     public enum FrameType : byte
     {

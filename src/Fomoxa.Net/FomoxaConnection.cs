@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using Cyclone.Net.Framing;
-using Cyclone.Net.Transports;
+using Fomoxa.Net.Framing;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
     public enum SendStatus
     {
@@ -14,36 +14,39 @@ namespace Cyclone.Net
         Closed,
     }
 
-    public sealed class CycloneConnection : IDisposable
+    public sealed class FomoxaConnection : IDisposable
     {
         private readonly ITransport transport;
         private readonly IFrameSource frameSource;
         private readonly Session session;
         private readonly SessionConfig config;
         private readonly ulong peerId;
-        private readonly List<CycloneEvent> events = new List<CycloneEvent>();
+        private readonly List<FomoxaEvent> events = new List<FomoxaEvent>();
 
         private byte[] eventPayloads = new byte[4096];
         private int eventPayloadsUsed;
         private byte[] outbox = new byte[0];
         private int outboxUsed;
         private byte[] scratch = new byte[0];
+        private const int MaxOutboxBytes = 64 * 1024;
+
         private bool transportDead;
         private bool gracefulDeath;
+        private bool overloaded;
         private bool connectedEmitted;
         private bool released;
 
-        public CycloneConnection(
-            ITransport transport, Schema schema, SessionConfig config, CycloneRole role, TimeSpan now)
+        public FomoxaConnection(
+            ITransport transport, Schema schema, SessionConfig config, FomoxaRole role, TimeSpan now)
             : this(transport, schema, config, role, now, 0)
         {
         }
 
-        internal CycloneConnection(
+        internal FomoxaConnection(
             ITransport transport,
             Schema schema,
             SessionConfig config,
-            CycloneRole role,
+            FomoxaRole role,
             TimeSpan now,
             ulong peerId)
         {
@@ -66,11 +69,11 @@ namespace Cyclone.Net
             }
         }
 
-        public static CycloneConnection Connect(
+        public static FomoxaConnection Connect(
             ITransport transport, Schema schema, SessionConfig config, TimeSpan now) =>
-            new CycloneConnection(transport, schema, config, CycloneRole.Client, now);
+            new FomoxaConnection(transport, schema, config, FomoxaRole.Client, now);
 
-        public static CycloneConnection Connect(ITransport transport, Schema schema, SessionConfig config) =>
+        public static FomoxaConnection Connect(ITransport transport, Schema schema, SessionConfig config) =>
             Connect(transport, schema, config, MonotonicClock.Now);
 
         public SessionState State => session.State;
@@ -83,7 +86,7 @@ namespace Cyclone.Net
 
         public ITransport Transport => transport;
 
-        public IReadOnlyList<CycloneEvent> Tick(TimeSpan now)
+        public IReadOnlyList<FomoxaEvent> Tick(TimeSpan now)
         {
             events.Clear();
             eventPayloadsUsed = 0;
@@ -91,7 +94,7 @@ namespace Cyclone.Net
             if (!connectedEmitted)
             {
                 connectedEmitted = true;
-                events.Add(CycloneEvent.Connected(peerId));
+                events.Add(FomoxaEvent.Connected(peerId));
             }
 
             if (!transportDead && outboxUsed > 0)
@@ -111,13 +114,15 @@ namespace Cyclone.Net
 
             if (transportDead && !session.IsClosed)
             {
-                Apply(session.TransportClosed(gracefulDeath), default);
+                Apply(
+                    overloaded ? session.ReportOverloaded() : session.TransportClosed(gracefulDeath),
+                    default);
             }
 
             return events;
         }
 
-        public IReadOnlyList<CycloneEvent> Tick() => Tick(MonotonicClock.Now);
+        public IReadOnlyList<FomoxaEvent> Tick() => Tick(MonotonicClock.Now);
 
         public SendStatus Send(uint messageId, ReadOnlySpan<byte> payload)
         {
@@ -129,7 +134,7 @@ namespace Cyclone.Net
             {
                 return SendStatus.NotReady;
             }
-            if (payload.Length > CycloneWire.MaxMessagePayload)
+            if (payload.Length > FomoxaWire.MaxMessagePayload)
             {
                 return SendStatus.TooLarge;
             }
@@ -240,30 +245,30 @@ namespace Cyclone.Net
                     break;
 
                 case SessionEmit.Ready:
-                    events.Add(CycloneEvent.Ready(peerId));
+                    events.Add(FomoxaEvent.Ready(peerId));
                     break;
 
                 case SessionEmit.Message:
                 {
                     int offset = StorePayload(frame.Payload);
-                    events.Add(CycloneEvent.Message(peerId, frame.MessageId, eventPayloads, offset, frame.Length));
+                    events.Add(FomoxaEvent.Message(peerId, frame.MessageId, eventPayloads, offset, frame.Length));
                     break;
                 }
 
                 case SessionEmit.Ping:
-                    events.Add(CycloneEvent.Ping(peerId));
+                    events.Add(FomoxaEvent.Ping(peerId));
                     break;
 
                 case SessionEmit.Pong:
-                    events.Add(CycloneEvent.Pong(peerId));
+                    events.Add(FomoxaEvent.Pong(peerId));
                     break;
 
                 case SessionEmit.Disconnected:
-                    events.Add(CycloneEvent.Disconnected(peerId, action.Reason));
+                    events.Add(FomoxaEvent.Disconnected(peerId, action.Reason));
                     break;
 
                 case SessionEmit.HandshakeFailed:
-                    events.Add(CycloneEvent.HandshakeFailed(peerId, action.Failure));
+                    events.Add(FomoxaEvent.HandshakeFailed(peerId, action.Failure));
                     transportDead = true;
                     transport.CloseGracefully();
                     break;
@@ -367,6 +372,17 @@ namespace Cyclone.Net
 
         private void AppendOutbox(byte[] bytes, int length)
         {
+            // The protocol caps how many control frames can be owed at once:
+            // one probe per silence window, one REPLY per POLL, at most one
+            // query round per session. Passing this means an assumption broke,
+            // so the session ends rather than the buffer growing (02 §8).
+            if (outboxUsed + length > MaxOutboxBytes)
+            {
+                overloaded = true;
+                Kill(false);
+                return;
+            }
+
             if (outbox.Length - outboxUsed < length)
             {
                 var grown = new byte[outboxUsed + length];

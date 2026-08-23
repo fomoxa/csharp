@@ -1,8 +1,8 @@
 using System;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public static class FlowTests
     {
@@ -20,6 +20,7 @@ namespace Cyclone.Net.Tests
             TestRegistry.Add(Group, "a clean transport close reports the peer closing", CleanCloseReason);
             TestRegistry.Add(Group, "a broken transport reports a transport error", BrokenTransportReason);
             TestRegistry.Add(Group, "a frame violation on a byte stream ends the session", StreamViolationIsFatal);
+            TestRegistry.Add(Group, "a blocked link plus a peer polling every tick stops at the ceiling", PendingQueueStopsAtItsCeiling);
             TestRegistry.Add(Group, "a failed handshake followed by a dead link raises one end event", OneEndEventOnly);
             TestRegistry.Add(Group, "closing locally raises no event and closes the link politely", LocalCloseIsSilent);
             TestRegistry.Add(Group, "two messages in one tick both carry their own payload", PayloadsSurviveTheTick);
@@ -29,18 +30,18 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             transport.TakeOutgoing();
             transport.Deliver(Wire.Verdict(0));
 
             var events = connection.Tick(TimeSpan.Zero);
             Check.True(events.Count >= 2, "the first tick carries both events");
-            Check.Equal(CycloneEventKind.Connected, events[0].Kind, "first event");
-            Check.Equal(CycloneEventKind.Ready, events[1].Kind, "second event");
+            Check.Equal(FomoxaEventKind.Connected, events[0].Kind, "first event");
+            Check.Equal(FomoxaEventKind.Ready, events[1].Kind, "second event");
 
             var later = connection.Tick(TimeSpan.Zero);
-            Check.False(Events.Has(later, CycloneEventKind.Connected), "CONNECTED does not repeat");
+            Check.False(Events.Has(later, FomoxaEventKind.Connected), "CONNECTED does not repeat");
         }
 
         private static void BlockedFrameIsParked()
@@ -117,7 +118,7 @@ namespace Cyclone.Net.Tests
             transport.Deliver(Wire.DataFrame(5, payload));
             var events = side.Connection.Tick(TimeSpan.Zero);
 
-            var message = Events.First(events, CycloneEventKind.Message);
+            var message = Events.First(events, FomoxaEventKind.Message);
             Check.Equal(5u, message.MessageId, "message id");
             Check.Bytes(payload, message.Payload.Span, "the packet came through untouched");
         }
@@ -131,10 +132,10 @@ namespace Cyclone.Net.Tests
             }
 
             var first = side.Connection.Tick(TimeSpan.Zero);
-            Check.Equal(8, Events.Count(first, CycloneEventKind.Message), "the tick budget held");
+            Check.Equal(8, Events.Count(first, FomoxaEventKind.Message), "the tick budget held");
 
             var second = side.Connection.Tick(TimeSpan.Zero);
-            Check.Equal(4, Events.Count(second, CycloneEventKind.Message), "the rest arrived next tick");
+            Check.Equal(4, Events.Count(second, FomoxaEventKind.Message), "the rest arrived next tick");
         }
 
         private static void CleanCloseReason()
@@ -145,7 +146,7 @@ namespace Cyclone.Net.Tests
             var events = side.Connection.Tick(TimeSpan.Zero);
             Check.Equal(
                 DisconnectReason.PeerClosed,
-                Events.First(events, CycloneEventKind.Disconnected).Reason,
+                Events.First(events, FomoxaEventKind.Disconnected).Reason,
                 "disconnect reason");
         }
 
@@ -157,7 +158,7 @@ namespace Cyclone.Net.Tests
             var events = side.Connection.Tick(TimeSpan.Zero);
             Check.Equal(
                 DisconnectReason.TransportError,
-                Events.First(events, CycloneEventKind.Disconnected).Reason,
+                Events.First(events, FomoxaEventKind.Disconnected).Reason,
                 "disconnect reason");
         }
 
@@ -165,13 +166,13 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Stream);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             transport.TakeOutgoing();
 
             transport.Deliver(new byte[] { 0x7F });
             var events = connection.Tick(TimeSpan.Zero);
-            Check.True(Events.Has(events, CycloneEventKind.Disconnected), "the session ended");
+            Check.True(Events.Has(events, FomoxaEventKind.Disconnected), "the session ended");
             Check.Equal(SessionState.Closed, connection.State, "session state");
         }
 
@@ -179,13 +180,13 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10, 20));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Server, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Server, TimeSpan.Zero);
 
             transport.Deliver(Wire.Hello(2, 999, (1, 2, 21)));
             var first = connection.Tick(TimeSpan.Zero);
-            Check.Equal(1, Events.Count(first, CycloneEventKind.HandshakeFailed), "the handshake failed");
-            Check.Equal(0, Events.Count(first, CycloneEventKind.Disconnected), "and nothing else ended it");
+            Check.Equal(1, Events.Count(first, FomoxaEventKind.HandshakeFailed), "the handshake failed");
+            Check.Equal(0, Events.Count(first, FomoxaEventKind.Disconnected), "and nothing else ended it");
             Check.True(transport.GracefullyClosed, "the link was closed politely");
 
             transport.ReportError = true;
@@ -210,14 +211,14 @@ namespace Cyclone.Net.Tests
             transport.Deliver(Wire.DataFrame(2, new byte[] { 2, 2 }));
 
             var events = side.Connection.Tick(TimeSpan.Zero);
-            Check.Equal(2, Events.Count(events, CycloneEventKind.Message), "both messages arrived");
+            Check.Equal(2, Events.Count(events, FomoxaEventKind.Message), "both messages arrived");
 
-            var first = default(CycloneEvent);
-            var second = default(CycloneEvent);
+            var first = default(FomoxaEvent);
+            var second = default(FomoxaEvent);
             int seen = 0;
             foreach (var item in events)
             {
-                if (item.Kind != CycloneEventKind.Message)
+                if (item.Kind != FomoxaEventKind.Message)
                 {
                     continue;
                 }
@@ -238,20 +239,48 @@ namespace Cyclone.Net.Tests
 
         private readonly struct Side
         {
-            public Side(CycloneConnection connection)
+            public Side(FomoxaConnection connection)
             {
                 Connection = connection;
             }
 
-            public CycloneConnection Connection { get; }
+            public FomoxaConnection Connection { get; }
+        }
+
+        // 02 §8: the pending queue must have a ceiling. A peer that pings every
+        // tick while never reading keeps our silence clock alive, so heartbeat
+        // never ends the session; only the ceiling does.
+        private static void PendingQueueStopsAtItsCeiling()
+        {
+            var side = ReadyClient(out var transport);
+            transport.BlockSends = true;
+
+            var events = new System.Collections.Generic.List<FomoxaEvent>();
+            for (var tick = 0; tick < 200_000 && !Events.Has(events, FomoxaEventKind.Disconnected); tick++)
+            {
+                transport.Deliver(Wire.Ping());
+                events.AddRange(side.Connection.Tick(TimeSpan.FromMilliseconds(tick)));
+            }
+
+            Check.True(
+                Events.Has(events, FomoxaEventKind.Disconnected),
+                "the ceiling ends the session instead of letting the queue grow");
+            Check.Equal(
+                1,
+                Events.Count(events, FomoxaEventKind.Disconnected),
+                "exactly one termination event");
+            Check.Equal(
+                DisconnectReason.Timeout,
+                Events.First(events, FomoxaEventKind.Disconnected).Reason,
+                "a peer that stops reading is not keeping up, not a broken link");
         }
 
         private static Side ReadyClient(out FakeTransport transport)
         {
             transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             transport.TakeOutgoing();
             transport.Deliver(Wire.Verdict(0));
             connection.Tick(TimeSpan.Zero);

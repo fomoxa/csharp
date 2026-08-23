@@ -1,6 +1,6 @@
 using System;
 
-namespace Cyclone.Net.Framing
+namespace Fomoxa.Net.Framing
 {
     internal sealed class StreamFrameDecoder
     {

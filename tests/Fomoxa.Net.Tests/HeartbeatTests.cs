@@ -1,8 +1,8 @@
 using System;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public static class HeartbeatTests
     {
@@ -59,7 +59,7 @@ namespace Cyclone.Net.Tests
 
             side.Transport.Deliver(Wire.Pong());
             var events = side.Connection.Tick(TimeSpan.FromSeconds(6));
-            Check.True(Events.Has(events, CycloneEventKind.Pong), "answer event");
+            Check.True(Events.Has(events, FomoxaEventKind.Pong), "answer event");
 
             side.Connection.Tick(TimeSpan.FromSeconds(10));
             Check.Equal(0, side.Transport.Outgoing.Count, "the clock restarted from the answer");
@@ -77,10 +77,10 @@ namespace Cyclone.Net.Tests
 
             side.Transport.Deliver(Wire.DataFrame(3, new byte[] { 1 }));
             var events = side.Connection.Tick(TimeSpan.FromSeconds(6));
-            Check.True(Events.Has(events, CycloneEventKind.Message), "the data arrived");
+            Check.True(Events.Has(events, FomoxaEventKind.Message), "the data arrived");
 
             var later = side.Connection.Tick(TimeSpan.FromSeconds(20));
-            Check.False(Events.Has(later, CycloneEventKind.Disconnected), "the peer was never declared dead");
+            Check.False(Events.Has(later, FomoxaEventKind.Disconnected), "the peer was never declared dead");
         }
 
         private static void NoAnswerIsDeath()
@@ -93,7 +93,7 @@ namespace Cyclone.Net.Tests
             Check.Equal(0, side.Connection.Tick(TimeSpan.FromSeconds(19)).Count, "still alive one second short");
 
             var events = side.Connection.Tick(TimeSpan.FromSeconds(20));
-            var disconnect = Events.First(events, CycloneEventKind.Disconnected);
+            var disconnect = Events.First(events, FomoxaEventKind.Disconnected);
             Check.Equal(DisconnectReason.Timeout, disconnect.Reason, "disconnect reason");
             Check.Equal(SessionState.Closed, side.Connection.State, "session state");
         }
@@ -103,7 +103,7 @@ namespace Cyclone.Net.Tests
             var side = ReadyClient();
 
             var events = side.Connection.Tick(TimeSpan.FromSeconds(5));
-            Check.False(Events.Has(events, CycloneEventKind.Disconnected), "the window closing kills nobody");
+            Check.False(Events.Has(events, FomoxaEventKind.Disconnected), "the window closing kills nobody");
             Check.Bytes(new byte[] { (byte)FrameType.Ping }, side.Transport.TakeOutgoing(), "a probe went first");
         }
 
@@ -111,8 +111,8 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             transport.TakeOutgoing();
 
             connection.Tick(TimeSpan.FromSeconds(4));
@@ -123,8 +123,8 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Server, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Server, TimeSpan.Zero);
 
             connection.Tick(TimeSpan.FromSeconds(4));
             Check.Equal(0, transport.Outgoing.Count, "nothing before the handshake window closes");
@@ -137,8 +137,8 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(0xF00D, Schemas.Message(1, 10));
-            using var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Server, TimeSpan.Zero);
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Server, TimeSpan.Zero);
 
             transport.Deliver(Wire.Hello(2, 0xF00D));
             connection.Tick(TimeSpan.FromSeconds(1));
@@ -154,13 +154,13 @@ namespace Cyclone.Net.Tests
 
         private readonly struct Side
         {
-            public Side(CycloneConnection connection, FakeTransport transport)
+            public Side(FomoxaConnection connection, FakeTransport transport)
             {
                 Connection = connection;
                 Transport = transport;
             }
 
-            public CycloneConnection Connection { get; }
+            public FomoxaConnection Connection { get; }
 
             public FakeTransport Transport { get; }
         }
@@ -169,8 +169,8 @@ namespace Cyclone.Net.Tests
         {
             var transport = new FakeTransport(TransportKind.Message);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
-            var connection = new CycloneConnection(
-                transport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             transport.TakeOutgoing();
             transport.Deliver(Wire.Verdict(0));
             connection.Tick(TimeSpan.Zero);

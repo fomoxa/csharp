@@ -1,8 +1,8 @@
 using System;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
-    public enum CycloneRole
+    public enum FomoxaRole
     {
         Client,
         Server,

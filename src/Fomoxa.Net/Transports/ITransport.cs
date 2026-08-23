@@ -1,6 +1,6 @@
 using System;
 
-namespace Cyclone.Net.Transports
+namespace Fomoxa.Net.Transports
 {
     public enum TransportKind
     {

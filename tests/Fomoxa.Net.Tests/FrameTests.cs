@@ -1,9 +1,9 @@
 using System;
-using Cyclone.Net;
-using Cyclone.Net.Framing;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Framing;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public static class FrameTests
     {
@@ -155,12 +155,12 @@ namespace Cyclone.Net.Tests
 
         private static void DataCeiling()
         {
-            var atCeiling = new byte[CycloneWire.DataFrameHeaderSize];
+            var atCeiling = new byte[FomoxaWire.DataFrameHeaderSize];
             atCeiling[0] = (byte)FrameType.Data;
-            atCeiling[1] = CycloneWire.DataMagicFirst;
-            atCeiling[2] = CycloneWire.DataMagicSecond;
+            atCeiling[1] = FomoxaWire.DataMagicFirst;
+            atCeiling[2] = FomoxaWire.DataMagicSecond;
             System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
-                atCeiling.AsSpan(7, 4), CycloneWire.MaxMessagePayload);
+                atCeiling.AsSpan(7, 4), FomoxaWire.MaxMessagePayload);
             Check.Equal(
                 FrameScan.Incomplete,
                 FrameLayout.Scan(atCeiling, out _, out _, out _, out _),
@@ -168,7 +168,7 @@ namespace Cyclone.Net.Tests
 
             var pastCeiling = (byte[])atCeiling.Clone();
             System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
-                pastCeiling.AsSpan(7, 4), CycloneWire.MaxMessagePayload + 1u);
+                pastCeiling.AsSpan(7, 4), FomoxaWire.MaxMessagePayload + 1u);
             Check.Equal(
                 FrameScan.Corrupt,
                 FrameLayout.Scan(pastCeiling, out _, out _, out _, out _),
@@ -177,10 +177,10 @@ namespace Cyclone.Net.Tests
 
         private static void HandshakeCeiling()
         {
-            var atCeiling = new byte[CycloneWire.HandshakeFrameHeaderSize];
+            var atCeiling = new byte[FomoxaWire.HandshakeFrameHeaderSize];
             atCeiling[0] = (byte)FrameType.Handshake;
             System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
-                atCeiling.AsSpan(1, 4), CycloneWire.MaxHandshakePayload);
+                atCeiling.AsSpan(1, 4), FomoxaWire.MaxHandshakePayload);
             Check.Equal(
                 FrameScan.Incomplete,
                 FrameLayout.Scan(atCeiling, out _, out _, out _, out _),
@@ -188,7 +188,7 @@ namespace Cyclone.Net.Tests
 
             var pastCeiling = (byte[])atCeiling.Clone();
             System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
-                pastCeiling.AsSpan(1, 4), CycloneWire.MaxHandshakePayload + 1u);
+                pastCeiling.AsSpan(1, 4), FomoxaWire.MaxHandshakePayload + 1u);
             Check.Equal(
                 FrameScan.Corrupt,
                 FrameLayout.Scan(pastCeiling, out _, out _, out _, out _),

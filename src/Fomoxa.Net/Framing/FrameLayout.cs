@@ -1,7 +1,7 @@
 using System;
 using System.Buffers.Binary;
 
-namespace Cyclone.Net.Framing
+namespace Fomoxa.Net.Framing
 {
     internal enum FrameScan
     {
@@ -33,22 +33,22 @@ namespace Cyclone.Net.Framing
             {
                 case (byte)FrameType.Data:
                 {
-                    if (bytes.Length < CycloneWire.DataFrameHeaderSize)
+                    if (bytes.Length < FomoxaWire.DataFrameHeaderSize)
                     {
                         return FrameScan.Incomplete;
                     }
-                    if (bytes[1] != CycloneWire.DataMagicFirst || bytes[2] != CycloneWire.DataMagicSecond)
+                    if (bytes[1] != FomoxaWire.DataMagicFirst || bytes[2] != FomoxaWire.DataMagicSecond)
                     {
                         return FrameScan.Corrupt;
                     }
                     uint declared = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(7, 4));
-                    if (declared > CycloneWire.MaxMessagePayload)
+                    if (declared > FomoxaWire.MaxMessagePayload)
                     {
                         return FrameScan.Corrupt;
                     }
                     type = FrameType.Data;
                     messageId = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(3, 4));
-                    headerSize = CycloneWire.DataFrameHeaderSize;
+                    headerSize = FomoxaWire.DataFrameHeaderSize;
                     payloadLength = (int)declared;
                     return bytes.Length < headerSize + payloadLength ? FrameScan.Incomplete : FrameScan.Ok;
                 }
@@ -67,17 +67,17 @@ namespace Cyclone.Net.Framing
 
                 case (byte)FrameType.Handshake:
                 {
-                    if (bytes.Length < CycloneWire.HandshakeFrameHeaderSize)
+                    if (bytes.Length < FomoxaWire.HandshakeFrameHeaderSize)
                     {
                         return FrameScan.Incomplete;
                     }
                     uint declared = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(1, 4));
-                    if (declared > CycloneWire.MaxHandshakePayload)
+                    if (declared > FomoxaWire.MaxHandshakePayload)
                     {
                         return FrameScan.Corrupt;
                     }
                     type = FrameType.Handshake;
-                    headerSize = CycloneWire.HandshakeFrameHeaderSize;
+                    headerSize = FomoxaWire.HandshakeFrameHeaderSize;
                     payloadLength = (int)declared;
                     return bytes.Length < headerSize + payloadLength ? FrameScan.Incomplete : FrameScan.Ok;
                 }
@@ -88,19 +88,19 @@ namespace Cyclone.Net.Framing
         }
 
         public static int DataFrameSize(int payloadLength) =>
-            CycloneWire.DataFrameHeaderSize + payloadLength;
+            FomoxaWire.DataFrameHeaderSize + payloadLength;
 
         public static int HandshakeFrameSize(int payloadLength) =>
-            CycloneWire.HandshakeFrameHeaderSize + payloadLength;
+            FomoxaWire.HandshakeFrameHeaderSize + payloadLength;
 
         public static void WriteDataFrame(Span<byte> destination, uint messageId, ReadOnlySpan<byte> payload)
         {
             destination[0] = (byte)FrameType.Data;
-            destination[1] = CycloneWire.DataMagicFirst;
-            destination[2] = CycloneWire.DataMagicSecond;
+            destination[1] = FomoxaWire.DataMagicFirst;
+            destination[2] = FomoxaWire.DataMagicSecond;
             BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(3, 4), messageId);
             BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(7, 4), (uint)payload.Length);
-            payload.CopyTo(destination.Slice(CycloneWire.DataFrameHeaderSize));
+            payload.CopyTo(destination.Slice(FomoxaWire.DataFrameHeaderSize));
         }
 
         public static void WriteHandshakeHeader(Span<byte> destination, int payloadLength)

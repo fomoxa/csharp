@@ -1,6 +1,6 @@
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
-    public static class CycloneWire
+    public static class FomoxaWire
     {
         public const uint ProtocolVersion = 2;
 

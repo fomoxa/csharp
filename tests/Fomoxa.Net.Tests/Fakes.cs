@@ -1,10 +1,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public sealed class FakeTransport : ITransport
     {
@@ -148,22 +148,22 @@ namespace Cyclone.Net.Tests
     {
         public static byte[] HandshakeFrame(byte[] payload)
         {
-            var frame = new byte[CycloneWire.HandshakeFrameHeaderSize + payload.Length];
+            var frame = new byte[FomoxaWire.HandshakeFrameHeaderSize + payload.Length];
             frame[0] = (byte)FrameType.Handshake;
             BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(1, 4), (uint)payload.Length);
-            payload.CopyTo(frame.AsSpan(CycloneWire.HandshakeFrameHeaderSize));
+            payload.CopyTo(frame.AsSpan(FomoxaWire.HandshakeFrameHeaderSize));
             return frame;
         }
 
         public static byte[] DataFrame(uint messageId, byte[] payload)
         {
-            var frame = new byte[CycloneWire.DataFrameHeaderSize + payload.Length];
+            var frame = new byte[FomoxaWire.DataFrameHeaderSize + payload.Length];
             frame[0] = (byte)FrameType.Data;
-            frame[1] = CycloneWire.DataMagicFirst;
-            frame[2] = CycloneWire.DataMagicSecond;
+            frame[1] = FomoxaWire.DataMagicFirst;
+            frame[2] = FomoxaWire.DataMagicSecond;
             BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(3, 4), messageId);
             BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(7, 4), (uint)payload.Length);
-            payload.CopyTo(frame.AsSpan(CycloneWire.DataFrameHeaderSize));
+            payload.CopyTo(frame.AsSpan(FomoxaWire.DataFrameHeaderSize));
             return frame;
         }
 
@@ -175,46 +175,46 @@ namespace Cyclone.Net.Tests
 
         public static byte[] Hello(uint version, ulong schemaFingerprint, params (uint Id, ushort Fields, ulong Fingerprint)[] entries)
         {
-            var payload = new byte[CycloneWire.HelloHeaderSize + (CycloneWire.HelloEntrySize * entries.Length)];
+            var payload = new byte[FomoxaWire.HelloHeaderSize + (FomoxaWire.HelloEntrySize * entries.Length)];
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(0, 4), version);
             BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(4, 8), schemaFingerprint);
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(12, 4), (uint)entries.Length);
-            int cursor = CycloneWire.HelloHeaderSize;
+            int cursor = FomoxaWire.HelloHeaderSize;
             foreach (var entry in entries)
             {
                 BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(cursor, 4), entry.Id);
                 BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(cursor + 4, 2), entry.Fields);
                 BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(cursor + 6, 8), entry.Fingerprint);
-                cursor += CycloneWire.HelloEntrySize;
+                cursor += FomoxaWire.HelloEntrySize;
             }
             return HandshakeFrame(payload);
         }
 
         public static byte[] QueryReply(params (uint Id, ulong Fingerprint)[] entries)
         {
-            var payload = new byte[CycloneWire.QueryReplyHeaderSize + (CycloneWire.QueryReplyEntrySize * entries.Length)];
+            var payload = new byte[FomoxaWire.QueryReplyHeaderSize + (FomoxaWire.QueryReplyEntrySize * entries.Length)];
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(0, 4), (uint)entries.Length);
-            int cursor = CycloneWire.QueryReplyHeaderSize;
+            int cursor = FomoxaWire.QueryReplyHeaderSize;
             foreach (var entry in entries)
             {
                 BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(cursor, 4), entry.Id);
                 BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(cursor + 4, 8), entry.Fingerprint);
-                cursor += CycloneWire.QueryReplyEntrySize;
+                cursor += FomoxaWire.QueryReplyEntrySize;
             }
             return HandshakeFrame(payload);
         }
 
         public static byte[] Query(params (uint Id, ushort Fields)[] entries)
         {
-            var payload = new byte[CycloneWire.QueryHeaderSize + (CycloneWire.QueryEntrySize * entries.Length)];
-            payload[0] = CycloneWire.QueryVerdictByte;
+            var payload = new byte[FomoxaWire.QueryHeaderSize + (FomoxaWire.QueryEntrySize * entries.Length)];
+            payload[0] = FomoxaWire.QueryVerdictByte;
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(1, 4), (uint)entries.Length);
-            int cursor = CycloneWire.QueryHeaderSize;
+            int cursor = FomoxaWire.QueryHeaderSize;
             foreach (var entry in entries)
             {
                 BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(cursor, 4), entry.Id);
                 BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(cursor + 4, 2), entry.Fields);
-                cursor += CycloneWire.QueryEntrySize;
+                cursor += FomoxaWire.QueryEntrySize;
             }
             return HandshakeFrame(payload);
         }
@@ -245,7 +245,7 @@ namespace Cyclone.Net.Tests
 
     public static class Events
     {
-        public static bool Has(IReadOnlyList<CycloneEvent> events, CycloneEventKind kind)
+        public static bool Has(IReadOnlyList<FomoxaEvent> events, FomoxaEventKind kind)
         {
             foreach (var item in events)
             {
@@ -257,7 +257,7 @@ namespace Cyclone.Net.Tests
             return false;
         }
 
-        public static CycloneEvent First(IReadOnlyList<CycloneEvent> events, CycloneEventKind kind)
+        public static FomoxaEvent First(IReadOnlyList<FomoxaEvent> events, FomoxaEventKind kind)
         {
             foreach (var item in events)
             {
@@ -269,7 +269,7 @@ namespace Cyclone.Net.Tests
             throw new AssertionException($"no {kind} event was raised");
         }
 
-        public static int Count(IReadOnlyList<CycloneEvent> events, CycloneEventKind kind)
+        public static int Count(IReadOnlyList<FomoxaEvent> events, FomoxaEventKind kind)
         {
             int total = 0;
             foreach (var item in events)

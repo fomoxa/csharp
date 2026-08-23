@@ -5,11 +5,11 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{270004A2-1F9D-46FF-B4FA-50F0FC358D53}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cyclone.Net", "src\Cyclone.Net\Cyclone.Net.csproj", "{6FD48F68-9111-4FDE-BC66-53DD90ED41E4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fomoxa.Net", "src\Fomoxa.Net\Fomoxa.Net.csproj", "{6FD48F68-9111-4FDE-BC66-53DD90ED41E4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{810C3130-9896-499C-972B-AE7B2938CB31}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cyclone.Net.Tests", "tests\Cyclone.Net.Tests\Cyclone.Net.Tests.csproj", "{BA8DEADC-403B-450D-A6AB-AABA36091E7D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fomoxa.Net.Tests", "tests\Fomoxa.Net.Tests\Fomoxa.Net.Tests.csproj", "{BA8DEADC-403B-450D-A6AB-AABA36091E7D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{45AC4A05-68B7-4ADE-BB00-934C741E94D0}"
 EndProject

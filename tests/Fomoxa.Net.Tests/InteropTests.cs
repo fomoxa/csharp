@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public static class InteropTests
     {
@@ -31,11 +31,11 @@ namespace Cyclone.Net.Tests
             Check.Equal(SendStatus.Sent, link.Server.Send(22, new byte[] { 9 }), "server sends");
             link.Settle(TimeSpan.Zero);
 
-            var atServer = Events.First(link.ServerEvents, CycloneEventKind.Message);
+            var atServer = Events.First(link.ServerEvents, FomoxaEventKind.Message);
             Check.Equal(11u, atServer.MessageId, "message id at the server");
             Check.Bytes(new byte[] { 1, 2, 3 }, atServer.Payload.Span, "payload at the server");
 
-            var atClient = Events.First(link.ClientEvents, CycloneEventKind.Message);
+            var atClient = Events.First(link.ClientEvents, FomoxaEventKind.Message);
             Check.Equal(22u, atClient.MessageId, "message id at the client");
             Check.Bytes(new byte[] { 9 }, atClient.Payload.Span, "payload at the client");
         }
@@ -56,7 +56,7 @@ namespace Cyclone.Net.Tests
             Check.Equal(SendStatus.Sent, link.Client.Send(7, payload), "client sends");
             link.Settle(TimeSpan.Zero);
 
-            var received = Events.First(link.ServerEvents, CycloneEventKind.Message);
+            var received = Events.First(link.ServerEvents, FomoxaEventKind.Message);
             Check.Equal(7u, received.MessageId, "message id");
             Check.Bytes(payload, received.Payload.Span, "payload reassembled from single bytes");
         }
@@ -81,11 +81,11 @@ namespace Cyclone.Net.Tests
 
             Check.Equal(
                 HandshakeFailure.SchemaConflict,
-                Events.First(link.ClientEvents, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(link.ClientEvents, FomoxaEventKind.HandshakeFailed).Failure,
                 "the client learns the reason");
             Check.Equal(
                 HandshakeFailure.SchemaConflict,
-                Events.First(link.ServerEvents, CycloneEventKind.HandshakeFailed).Failure,
+                Events.First(link.ServerEvents, FomoxaEventKind.HandshakeFailed).Failure,
                 "the server recorded the same reason");
         }
 
@@ -93,15 +93,15 @@ namespace Cyclone.Net.Tests
         {
             var schema = SharedSchema();
             var listener = new FakeListener();
-            using var server = new CycloneServer(listener, schema, Schemas.Config());
+            using var server = new FomoxaServer(listener, schema, Schemas.Config());
 
             var clientTransport = new FakeTransport(TransportKind.Message);
             var peerTransport = new FakeTransport(TransportKind.Message);
-            using var client = new CycloneConnection(
-                clientTransport, schema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
+            using var client = new FomoxaConnection(
+                clientTransport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
             listener.Waiting.Enqueue(peerTransport);
 
-            var collected = new List<CycloneEvent>();
+            var collected = new List<FomoxaEvent>();
             for (int round = 0; round < 6; round++)
             {
                 Pipe.Pump(clientTransport, peerTransport);
@@ -111,22 +111,22 @@ namespace Cyclone.Net.Tests
             }
 
             Check.Equal(1, server.PeerCount, "one peer is registered");
-            Check.True(Events.Has(collected, CycloneEventKind.Connected), "peer connected");
-            Check.True(Events.Has(collected, CycloneEventKind.Ready), "peer ready");
-            ulong peerId = Events.First(collected, CycloneEventKind.Ready).PeerId;
+            Check.True(Events.Has(collected, FomoxaEventKind.Connected), "peer connected");
+            Check.True(Events.Has(collected, FomoxaEventKind.Ready), "peer ready");
+            ulong peerId = Events.First(collected, FomoxaEventKind.Ready).PeerId;
             Check.True(peerId != 0, "the peer carries an identifier");
             Check.True(server.IsPeerReady(peerId), "the server agrees the peer is ready");
 
             client.Send(5, new byte[] { 42 });
             Pipe.Pump(clientTransport, peerTransport);
             var afterMessage = server.Tick(TimeSpan.Zero);
-            var message = Events.First(afterMessage, CycloneEventKind.Message);
+            var message = Events.First(afterMessage, FomoxaEventKind.Message);
             Check.Equal(peerId, message.PeerId, "the message names its peer");
             Check.Bytes(new byte[] { 42 }, message.Payload.Span, "payload");
 
             server.Broadcast(6, new byte[] { 43 });
             Pipe.Pump(peerTransport, clientTransport);
-            var atClient = Events.First(client.Tick(TimeSpan.Zero), CycloneEventKind.Message);
+            var atClient = Events.First(client.Tick(TimeSpan.Zero), FomoxaEventKind.Message);
             Check.Equal(6u, atClient.MessageId, "the broadcast arrived");
 
             server.Disconnect(peerId);
@@ -145,10 +145,10 @@ namespace Cyclone.Net.Tests
                 now += TimeSpan.FromSeconds(3);
                 link.Settle(now);
                 Check.False(
-                    Events.Has(link.ClientEvents, CycloneEventKind.Disconnected),
+                    Events.Has(link.ClientEvents, FomoxaEventKind.Disconnected),
                     $"the client is still alive at {now.TotalSeconds}s");
                 Check.False(
-                    Events.Has(link.ServerEvents, CycloneEventKind.Disconnected),
+                    Events.Has(link.ServerEvents, FomoxaEventKind.Disconnected),
                     $"the server peer is still alive at {now.TotalSeconds}s");
             }
 
@@ -160,16 +160,16 @@ namespace Cyclone.Net.Tests
             Schemas.Of(0xABCD, Schemas.Message(1, 10, 20), Schemas.Message(2, 30));
 
         private sealed record Peers(
-            CycloneConnection Client,
+            FomoxaConnection Client,
             FakeTransport ClientTransport,
-            CycloneConnection Server,
+            FomoxaConnection Server,
             FakeTransport ServerTransport)
         {
             public bool Fragment { get; init; }
 
-            public List<CycloneEvent> ClientEvents { get; } = new List<CycloneEvent>();
+            public List<FomoxaEvent> ClientEvents { get; } = new List<FomoxaEvent>();
 
-            public List<CycloneEvent> ServerEvents { get; } = new List<CycloneEvent>();
+            public List<FomoxaEvent> ServerEvents { get; } = new List<FomoxaEvent>();
 
             public void Settle(TimeSpan now)
             {
@@ -211,10 +211,10 @@ namespace Cyclone.Net.Tests
         {
             var clientTransport = new FakeTransport(kind);
             var serverTransport = new FakeTransport(kind);
-            var client = new CycloneConnection(
-                clientTransport, clientSchema, Schemas.Config(), CycloneRole.Client, TimeSpan.Zero);
-            var server = new CycloneConnection(
-                serverTransport, serverSchema, Schemas.Config(), CycloneRole.Server, TimeSpan.Zero);
+            var client = new FomoxaConnection(
+                clientTransport, clientSchema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
+            var server = new FomoxaConnection(
+                serverTransport, serverSchema, Schemas.Config(), FomoxaRole.Server, TimeSpan.Zero);
             return new Peers(client, clientTransport, server, serverTransport);
         }
     }

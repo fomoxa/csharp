@@ -1,8 +1,8 @@
 using System;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
-    public enum CycloneEventKind
+    public enum FomoxaEventKind
     {
         Connected,
         Ready,
@@ -28,14 +28,14 @@ namespace Cyclone.Net
         Timeout,
     }
 
-    public readonly struct CycloneEvent
+    public readonly struct FomoxaEvent
     {
         private readonly byte[]? payloadBuffer;
         private readonly int payloadOffset;
         private readonly int payloadLength;
 
-        private CycloneEvent(
-            CycloneEventKind kind,
+        private FomoxaEvent(
+            FomoxaEventKind kind,
             ulong peerId,
             uint messageId,
             byte[]? payloadBuffer,
@@ -54,7 +54,7 @@ namespace Cyclone.Net
             Reason = reason;
         }
 
-        public CycloneEventKind Kind { get; }
+        public FomoxaEventKind Kind { get; }
 
         public ulong PeerId { get; }
 
@@ -71,29 +71,29 @@ namespace Cyclone.Net
 
         public byte[] CopyPayload() => Payload.ToArray();
 
-        internal static CycloneEvent Connected(ulong peerId) =>
-            new CycloneEvent(CycloneEventKind.Connected, peerId, 0, null, 0, 0, default, default);
+        internal static FomoxaEvent Connected(ulong peerId) =>
+            new FomoxaEvent(FomoxaEventKind.Connected, peerId, 0, null, 0, 0, default, default);
 
-        internal static CycloneEvent Ready(ulong peerId) =>
-            new CycloneEvent(CycloneEventKind.Ready, peerId, 0, null, 0, 0, default, default);
+        internal static FomoxaEvent Ready(ulong peerId) =>
+            new FomoxaEvent(FomoxaEventKind.Ready, peerId, 0, null, 0, 0, default, default);
 
-        internal static CycloneEvent HandshakeFailed(ulong peerId, HandshakeFailure failure) =>
-            new CycloneEvent(CycloneEventKind.HandshakeFailed, peerId, 0, null, 0, 0, failure, default);
+        internal static FomoxaEvent HandshakeFailed(ulong peerId, HandshakeFailure failure) =>
+            new FomoxaEvent(FomoxaEventKind.HandshakeFailed, peerId, 0, null, 0, 0, failure, default);
 
-        internal static CycloneEvent Message(
+        internal static FomoxaEvent Message(
             ulong peerId, uint messageId, byte[] buffer, int offset, int length) =>
-            new CycloneEvent(CycloneEventKind.Message, peerId, messageId, buffer, offset, length, default, default);
+            new FomoxaEvent(FomoxaEventKind.Message, peerId, messageId, buffer, offset, length, default, default);
 
-        internal static CycloneEvent Ping(ulong peerId) =>
-            new CycloneEvent(CycloneEventKind.Ping, peerId, 0, null, 0, 0, default, default);
+        internal static FomoxaEvent Ping(ulong peerId) =>
+            new FomoxaEvent(FomoxaEventKind.Ping, peerId, 0, null, 0, 0, default, default);
 
-        internal static CycloneEvent Pong(ulong peerId) =>
-            new CycloneEvent(CycloneEventKind.Pong, peerId, 0, null, 0, 0, default, default);
+        internal static FomoxaEvent Pong(ulong peerId) =>
+            new FomoxaEvent(FomoxaEventKind.Pong, peerId, 0, null, 0, 0, default, default);
 
-        internal static CycloneEvent Disconnected(ulong peerId, DisconnectReason reason) =>
-            new CycloneEvent(CycloneEventKind.Disconnected, peerId, 0, null, 0, 0, default, reason);
+        internal static FomoxaEvent Disconnected(ulong peerId, DisconnectReason reason) =>
+            new FomoxaEvent(FomoxaEventKind.Disconnected, peerId, 0, null, 0, 0, default, reason);
 
-        internal CycloneEvent WithPeer(ulong peerId) =>
-            new CycloneEvent(Kind, peerId, MessageId, payloadBuffer, payloadOffset, payloadLength, Failure, Reason);
+        internal FomoxaEvent WithPeer(ulong peerId) =>
+            new FomoxaEvent(Kind, peerId, MessageId, payloadBuffer, payloadOffset, payloadLength, Failure, Reason);
     }
 }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 
-namespace Cyclone.Net.Transports
+namespace Fomoxa.Net.Transports
 {
     public sealed class UdpTransport : ITransport
     {
@@ -120,6 +120,8 @@ namespace Cyclone.Net.Transports
 
     public sealed class UdpServerTransport : IListenerTransport
     {
+        internal const int PeerCeiling = 1024;
+
         private readonly Socket socket;
         private readonly Dictionary<IPEndPoint, UdpPeerTransport> peers =
             new Dictionary<IPEndPoint, UdpPeerTransport>();
@@ -167,6 +169,16 @@ namespace Cyclone.Net.Transports
                 return AcceptOutcome.Progress;
             }
 
+            // A UDP port hears from anyone, so an unbounded peer table is a
+            // stream of unknown source addresses away from exhausting memory.
+            // At the ceiling a new address is treated exactly like an
+            // unexpected packet: dropped silently, running sessions untouched
+            // (01 §10).
+            if (peers.Count >= PeerCeiling)
+            {
+                return AcceptOutcome.Progress;
+            }
+
             var created = new UdpPeerTransport(this, address);
             created.Enqueue(receiveScratch, count);
             peers.Add(address, created);
@@ -203,7 +215,7 @@ namespace Cyclone.Net.Transports
 
     public sealed class UdpPeerTransport : ITransport
     {
-        private const int MaxQueuedDatagrams = 64;
+        internal const int QueueCeiling = 64;
 
         private readonly UdpServerTransport owner;
         private readonly IPEndPoint address;
@@ -257,9 +269,12 @@ namespace Cyclone.Net.Transports
 
         internal void Enqueue(byte[] source, int count)
         {
-            if (inbox.Count >= MaxQueuedDatagrams)
+            // The oldest goes, not the newest: a real-time peer is better
+            // served by fresh data, and transport may not read the payload to
+            // decide otherwise (01 §6, §12).
+            if (inbox.Count >= QueueCeiling)
             {
-                return;
+                inbox.Dequeue();
             }
             var packet = new byte[count];
             Buffer.BlockCopy(source, 0, packet, 0, count);

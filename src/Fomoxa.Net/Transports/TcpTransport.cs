@@ -2,7 +2,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 
-namespace Cyclone.Net.Transports
+namespace Fomoxa.Net.Transports
 {
     public sealed class TcpTransport : ITransport
     {

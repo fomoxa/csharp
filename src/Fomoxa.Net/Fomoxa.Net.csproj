@@ -5,16 +5,16 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <AssemblyName>Cyclone.Net</AssemblyName>
-    <RootNamespace>Cyclone.Net</RootNamespace>
+    <AssemblyName>Fomoxa.Net</AssemblyName>
+    <RootNamespace>Fomoxa.Net</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <PackageId>Cyclone.Net</PackageId>
-    <Description>Cyclone transport SDK: framing, handshake, heartbeat and TCP/UDP transports.</Description>
+    <PackageId>Fomoxa.Net</PackageId>
+    <Description>Fomoxa transport SDK: framing, handshake, heartbeat and TCP/UDP transports.</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Cyclone.Net.Tests" />
+    <InternalsVisibleTo Include="Fomoxa.Net.Tests" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Cyclone.Net.Tests
+namespace Fomoxa.Net.Tests
 {
     public sealed class AssertionException : Exception
     {

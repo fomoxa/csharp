@@ -1,7 +1,7 @@
 using System;
-using Cyclone.Net.Transports;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Framing
+namespace Fomoxa.Net.Framing
 {
     internal enum FrameSourceStatus
     {

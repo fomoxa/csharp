@@ -6,12 +6,12 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <RootNamespace>Cyclone.Net.Examples.EchoServer</RootNamespace>
+    <RootNamespace>Fomoxa.Net.Examples.EchoServer</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Cyclone.Net/Cyclone.Net.csproj" />
+    <ProjectReference Include="../../src/Fomoxa.Net/Fomoxa.Net.csproj" />
     <Compile Include="../Shared/EchoSchema.cs" Link="EchoSchema.cs" />
   </ItemGroup>
 

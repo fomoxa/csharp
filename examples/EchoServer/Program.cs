@@ -2,10 +2,10 @@ using System;
 using System.Net;
 using System.Text;
 using System.Threading;
-using Cyclone.Net;
-using Cyclone.Net.Transports;
+using Fomoxa.Net;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net.Examples.EchoServer
+namespace Fomoxa.Net.Examples.EchoServer
 {
     public static class Program
     {
@@ -21,7 +21,7 @@ namespace Cyclone.Net.Examples.EchoServer
                 ? new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, port))
                 : new TcpListenerTransport(new IPEndPoint(IPAddress.Loopback, port));
 
-            using var server = new CycloneServer(listener, schema, config);
+            using var server = new FomoxaServer(listener, schema, config);
             Console.WriteLine($"echo server listening on {(udp ? "udp" : "tcp")} 127.0.0.1:{port}");
 
             var stop = new ManualResetEventSlim(false);
@@ -37,25 +37,25 @@ namespace Cyclone.Net.Examples.EchoServer
                 {
                     switch (raised.Kind)
                     {
-                        case CycloneEventKind.Connected:
+                        case FomoxaEventKind.Connected:
                             Console.WriteLine($"peer {raised.PeerId} arrived");
                             break;
 
-                        case CycloneEventKind.Ready:
+                        case FomoxaEventKind.Ready:
                             Console.WriteLine($"peer {raised.PeerId} agreed on the schema");
                             break;
 
-                        case CycloneEventKind.HandshakeFailed:
+                        case FomoxaEventKind.HandshakeFailed:
                             Console.WriteLine($"peer {raised.PeerId} refused: {raised.Failure}");
                             break;
 
-                        case CycloneEventKind.Message:
+                        case FomoxaEventKind.Message:
                             var text = Encoding.UTF8.GetString(raised.Payload.Span);
                             Console.WriteLine($"peer {raised.PeerId} said: {text}");
                             server.Send(raised.PeerId, EchoSchema.EchoMessageId, raised.Payload.Span);
                             break;
 
-                        case CycloneEventKind.Disconnected:
+                        case FomoxaEventKind.Disconnected:
                             Console.WriteLine($"peer {raised.PeerId} left: {raised.Reason}");
                             break;
                     }

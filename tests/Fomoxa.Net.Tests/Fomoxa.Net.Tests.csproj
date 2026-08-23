@@ -6,14 +6,14 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <AssemblyName>Cyclone.Net.Tests</AssemblyName>
-    <RootNamespace>Cyclone.Net.Tests</RootNamespace>
+    <AssemblyName>Fomoxa.Net.Tests</AssemblyName>
+    <RootNamespace>Fomoxa.Net.Tests</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Cyclone.Net/Cyclone.Net.csproj" />
+    <ProjectReference Include="../../src/Fomoxa.Net/Fomoxa.Net.csproj" />
   </ItemGroup>
 
 </Project>

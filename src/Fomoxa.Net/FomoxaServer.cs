@@ -1,21 +1,21 @@
 using System;
 using System.Collections.Generic;
-using Cyclone.Net.Transports;
+using Fomoxa.Net.Transports;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
-    public sealed class CycloneServer : IDisposable
+    public sealed class FomoxaServer : IDisposable
     {
         private readonly IListenerTransport listener;
         private readonly Schema schema;
         private readonly SessionConfig config;
-        private readonly List<CycloneConnection> peers = new List<CycloneConnection>();
-        private readonly List<CycloneEvent> events = new List<CycloneEvent>();
+        private readonly List<FomoxaConnection> peers = new List<FomoxaConnection>();
+        private readonly List<FomoxaEvent> events = new List<FomoxaEvent>();
 
         private ulong nextPeerId = 1;
         private bool released;
 
-        public CycloneServer(IListenerTransport listener, Schema schema, SessionConfig config)
+        public FomoxaServer(IListenerTransport listener, Schema schema, SessionConfig config)
         {
             this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
             this.schema = schema ?? throw new ArgumentNullException(nameof(schema));
@@ -26,7 +26,7 @@ namespace Cyclone.Net
 
         public IListenerTransport Listener => listener;
 
-        public IReadOnlyList<CycloneEvent> Tick(TimeSpan now)
+        public IReadOnlyList<FomoxaEvent> Tick(TimeSpan now)
         {
             events.Clear();
 
@@ -36,8 +36,8 @@ namespace Cyclone.Net
                 var outcome = listener.Accept();
                 if (outcome.Status == AcceptStatus.Accepted && outcome.Transport != null)
                 {
-                    peers.Add(new CycloneConnection(
-                        outcome.Transport, schema, config, CycloneRole.Server, now, nextPeerId));
+                    peers.Add(new FomoxaConnection(
+                        outcome.Transport, schema, config, FomoxaRole.Server, now, nextPeerId));
                     nextPeerId++;
                     budget--;
                     continue;
@@ -71,7 +71,7 @@ namespace Cyclone.Net
             return events;
         }
 
-        public IReadOnlyList<CycloneEvent> Tick() => Tick(MonotonicClock.Now);
+        public IReadOnlyList<FomoxaEvent> Tick() => Tick(MonotonicClock.Now);
 
         public SessionState? PeerState(ulong peerId)
         {
@@ -123,7 +123,7 @@ namespace Cyclone.Net
             listener.Dispose();
         }
 
-        private CycloneConnection? Find(ulong peerId)
+        private FomoxaConnection? Find(ulong peerId)
         {
             for (int index = 0; index < peers.Count; index++)
             {

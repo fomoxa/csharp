@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Cyclone.Net
+namespace Fomoxa.Net
 {
     public sealed class SchemaException : Exception
     {
@@ -74,18 +74,18 @@ namespace Cyclone.Net
             }
 
             var ordered = new List<MessageSchema>(messages);
-            if (ordered.Count > CycloneWire.MaxHelloMessages)
+            if (ordered.Count > FomoxaWire.MaxHelloMessages)
             {
                 throw new SchemaException(
-                    $"{ordered.Count} messages exceeds the {CycloneWire.MaxHelloMessages} a hello may declare");
+                    $"{ordered.Count} messages exceeds the {FomoxaWire.MaxHelloMessages} a hello may declare");
             }
 
-            long helloSize = CycloneWire.HelloHeaderSize + (long)CycloneWire.HelloEntrySize * ordered.Count;
-            if (helloSize > CycloneWire.MaxHandshakePayload)
+            long helloSize = FomoxaWire.HelloHeaderSize + (long)FomoxaWire.HelloEntrySize * ordered.Count;
+            if (helloSize > FomoxaWire.MaxHandshakePayload)
             {
                 throw new SchemaException(
                     $"{ordered.Count} messages need {helloSize} hello bytes, past the " +
-                    $"{CycloneWire.MaxHandshakePayload} a handshake frame carries");
+                    $"{FomoxaWire.MaxHandshakePayload} a handshake frame carries");
             }
 
             ordered.Sort((left, right) => left.Id.CompareTo(right.Id));
