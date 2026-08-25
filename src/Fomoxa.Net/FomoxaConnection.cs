@@ -23,12 +23,14 @@ namespace Fomoxa.Net
         private readonly ulong peerId;
         private readonly List<FomoxaEvent> events = new List<FomoxaEvent>();
 
-        private byte[] eventPayloads = new byte[4096];
+        private const int DefaultEventPayloadCapacity = 4096;
+        private const int MaxOutboxBytes = 64 * 1024;
+
+        private byte[] eventPayloads = new byte[DefaultEventPayloadCapacity];
         private int eventPayloadsUsed;
         private byte[] outbox = new byte[0];
         private int outboxUsed;
         private byte[] scratch = new byte[0];
-        private const int MaxOutboxBytes = 64 * 1024;
 
         private bool transportDead;
         private bool gracefulDeath;
@@ -197,6 +199,26 @@ namespace Fomoxa.Net
             }
             released = true;
             transport.Dispose();
+        }
+
+        public void ShrinkToFit()
+        {
+            frameSource.ShrinkToFit();
+            session.ShrinkToFit();
+            events.TrimExcess();
+
+            if (eventPayloadsUsed == 0 && eventPayloads.Length > DefaultEventPayloadCapacity)
+            {
+                eventPayloads = new byte[DefaultEventPayloadCapacity];
+            }
+            if (outboxUsed == 0 && outbox.Length > 0)
+            {
+                outbox = Array.Empty<byte>();
+            }
+            if (scratch.Length > 0)
+            {
+                scratch = Array.Empty<byte>();
+            }
         }
 
         private void Drain(TimeSpan now)

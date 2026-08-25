@@ -27,6 +27,7 @@ namespace Fomoxa.Net.Framing
     internal interface IFrameSource
     {
         FrameSourceStatus Next(ref SourcedFrame frame);
+        void ShrinkToFit();
     }
 
     internal sealed class StreamFrameSource : IFrameSource
@@ -89,6 +90,15 @@ namespace Fomoxa.Net.Framing
                 }
             }
         }
+
+        public void ShrinkToFit()
+        {
+            if (readBuffer.Length > InitialReadSize)
+            {
+                readBuffer = new byte[InitialReadSize];
+            }
+            decoder.ShrinkToFit();
+        }
     }
 
     internal sealed class MessageFrameSource : IFrameSource
@@ -142,6 +152,14 @@ namespace Fomoxa.Net.Framing
                     default:
                         return FrameSourceStatus.Error;
                 }
+            }
+        }
+
+        public void ShrinkToFit()
+        {
+            if (packetBuffer.Length > InitialPacketSize)
+            {
+                packetBuffer = new byte[InitialPacketSize];
             }
         }
     }

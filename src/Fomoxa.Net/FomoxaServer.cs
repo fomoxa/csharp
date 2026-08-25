@@ -123,6 +123,15 @@ namespace Fomoxa.Net
             listener.Dispose();
         }
 
+        public void ShrinkToFit()
+        {
+            events.TrimExcess();
+            for (int index = 0; index < peers.Count; index++)
+            {
+                peers[index].ShrinkToFit();
+            }
+        }
+
         private FomoxaConnection? Find(ulong peerId)
         {
             for (int index = 0; index < peers.Count; index++)

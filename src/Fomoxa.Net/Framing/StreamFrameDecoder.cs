@@ -4,7 +4,9 @@ namespace Fomoxa.Net.Framing
 {
     internal sealed class StreamFrameDecoder
     {
-        private byte[] buffer = new byte[4096];
+        private const int DefaultCapacity = 4096;
+
+        private byte[] buffer = new byte[DefaultCapacity];
         private int start;
         private int end;
         private bool poisoned;
@@ -60,6 +62,21 @@ namespace Fomoxa.Net.Framing
                     }
                     return FrameScan.Ok;
             }
+        }
+
+        public void ShrinkToFit()
+        {
+            int used = end - start;
+            int target = Math.Max(used, DefaultCapacity);
+            if (buffer.Length <= target)
+            {
+                return;
+            }
+            var fresh = new byte[target];
+            System.Buffer.BlockCopy(buffer, start, fresh, 0, used);
+            buffer = fresh;
+            start = 0;
+            end = used;
         }
 
         private void EnsureRoom(int extra)

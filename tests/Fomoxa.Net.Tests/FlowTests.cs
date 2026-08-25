@@ -16,6 +16,8 @@ namespace Fomoxa.Net.Tests
             TestRegistry.Add(Group, "a parked frame goes out before anything else", ParkedFrameGoesFirst);
             TestRegistry.Add(Group, "a frame past the link's ceiling fails the send but not the session", TooLargeKeepsSessionAlive);
             TestRegistry.Add(Group, "a packet larger than the buffer is kept, not lost", NeedCapacityKeepsPacket);
+            TestRegistry.Add(Group, "shrinking after a packet burst still delivers the next message", ShrinkAfterAPacketBurstStillDeliversTheNextMessage);
+            TestRegistry.Add(Group, "shrinking after a stream burst still delivers the next message", ShrinkAfterAStreamBurstStillDeliversTheNextMessage);
             TestRegistry.Add(Group, "a burst stops at the tick budget and resumes next tick", BudgetStopsTheDrain);
             TestRegistry.Add(Group, "a clean transport close reports the peer closing", CleanCloseReason);
             TestRegistry.Add(Group, "a broken transport reports a transport error", BrokenTransportReason);
@@ -121,6 +123,63 @@ namespace Fomoxa.Net.Tests
             var message = Events.First(events, FomoxaEventKind.Message);
             Check.Equal(5u, message.MessageId, "message id");
             Check.Bytes(payload, message.Payload.Span, "the packet came through untouched");
+        }
+
+        private static void ShrinkAfterAPacketBurstStillDeliversTheNextMessage()
+        {
+            var side = ReadyClient(out var transport);
+            var big = new byte[4000];
+            for (int index = 0; index < big.Length; index++)
+            {
+                big[index] = (byte)(index & 0xFF);
+            }
+
+            transport.Deliver(Wire.DataFrame(1, big));
+            var events = side.Connection.Tick(TimeSpan.Zero);
+            var message = Events.First(events, FomoxaEventKind.Message);
+            Check.Equal(1u, message.MessageId, "message id before shrink");
+            Check.Bytes(big, message.Payload.Span, "the burst payload came through intact");
+
+            side.Connection.ShrinkToFit();
+
+            var small = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+            transport.Deliver(Wire.DataFrame(2, small));
+            events = side.Connection.Tick(TimeSpan.Zero);
+            message = Events.First(events, FomoxaEventKind.Message);
+            Check.Equal(2u, message.MessageId, "message id after shrink");
+            Check.Bytes(small, message.Payload.Span, "a small message still arrives after shrinking");
+        }
+
+        private static void ShrinkAfterAStreamBurstStillDeliversTheNextMessage()
+        {
+            var transport = new FakeTransport(TransportKind.Stream);
+            var schema = Schemas.Of(1, Schemas.Message(1, 10));
+            using var connection = new FomoxaConnection(
+                transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);
+            transport.TakeOutgoing();
+            transport.Deliver(Wire.Verdict(0));
+            connection.Tick(TimeSpan.Zero);
+            Check.Equal(SessionState.Ready, connection.State, "client is ready");
+
+            var big = new byte[9000];
+            for (int index = 0; index < big.Length; index++)
+            {
+                big[index] = (byte)(index & 0xFF);
+            }
+            transport.Deliver(Wire.DataFrame(1, big));
+            var events = connection.Tick(TimeSpan.Zero);
+            var message = Events.First(events, FomoxaEventKind.Message);
+            Check.Equal(1u, message.MessageId, "message id before shrink");
+            Check.Bytes(big, message.Payload.Span, "the burst payload came through intact");
+
+            connection.ShrinkToFit();
+
+            var small = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+            transport.Deliver(Wire.DataFrame(2, small));
+            events = connection.Tick(TimeSpan.Zero);
+            message = Events.First(events, FomoxaEventKind.Message);
+            Check.Equal(2u, message.MessageId, "message id after shrink");
+            Check.Bytes(small, message.Payload.Span, "a small message still arrives after shrinking");
         }
 
         private static void BudgetStopsTheDrain()

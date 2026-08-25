@@ -61,7 +61,9 @@ namespace Fomoxa.Net
         private readonly TimeSpan createdAt;
         private readonly List<AskItem> asks = new List<AskItem>();
 
-        private byte[] outBuffer = new byte[64];
+        private const int DefaultOutBufferCapacity = 64;
+
+        private byte[] outBuffer = new byte[DefaultOutBufferCapacity];
         private TimeSpan lastActivity;
         private TimeSpan probeSentAt;
         private bool probing;
@@ -432,6 +434,14 @@ namespace Fomoxa.Net
             if (outBuffer.Length < size)
             {
                 outBuffer = new byte[size];
+            }
+        }
+
+        public void ShrinkToFit()
+        {
+            if (outBuffer.Length > DefaultOutBufferCapacity)
+            {
+                outBuffer = new byte[DefaultOutBufferCapacity];
             }
         }
     }
