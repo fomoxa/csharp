@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Fomoxa.Reliability</AssemblyName>
+    <RootNamespace>Fomoxa.Reliability</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <PackageId>Fomoxa.Reliability</PackageId>
+    <Description>Per-message reliable/unreliable delivery on top of one Fomoxa session, without changing Fomoxa.Net or ITransport.</Description>
+    <Authors>Fomoxa Protocol</Authors>
+    <Version>0.1.0</Version>
+    <PackageTags>fomoxa;protocol;networking;reliability</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/fomoxa/csharp</RepositoryUrl>
+    <PackageProjectUrl>https://fomoxa.github.io</PackageProjectUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Fomoxa.Net/Fomoxa.Net.csproj" />
+  </ItemGroup>
+
+</Project>

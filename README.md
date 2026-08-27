@@ -7,10 +7,10 @@ It implements framing, the schema handshake, heartbeat, and a non-blocking TCP/U
 The library targets `netstandard2.1`, so a single assembly runs on .NET 6/7/8/9 and inside Unity 2021+ under IL2CPP.
 The library contains no wire-format codec, no threading, and no `async`/`await` usage.
 
-## 2. Authoritative References
+## 2. Authoritative references
 
-The behavior of this library is defined by the documents below, not by this file.
-Where this library and any other Fomoxa SDK disagree on behavior, the referenced documents decide.
+The documents below define the behavior of this library.
+Where this library and another Fomoxa SDK disagree, those documents decide.
 
 | Document | Scope |
 |---|---|
@@ -51,7 +51,7 @@ dotnet add package Fomoxa.Net
 The package declares no dependency that reaches a consumer.
 `Microsoft.SourceLink.GitHub` is referenced with `PrivateAssets="All"` and is used only to embed source-link metadata into the package at build time.
 
-## 5. Building From Source
+## 5. Building from source
 
 ```sh
 dotnet build Fomoxa.Net.sln
@@ -60,7 +60,7 @@ dotnet run --project tests/Fomoxa.Net.Tests
 
 The test project requires no external test framework and no package restore beyond the solution itself.
 
-## 6. Quick Start
+## 6. Quick start
 
 ### 6.1 Client
 
@@ -100,7 +100,7 @@ while (!connection.IsClosed)
 ```
 
 A call to `Send` before the connection reaches the `Ready` state is refused.
-No application byte is written to the transport before both ends have confirmed they interpret the schema identically.
+No application byte reaches the transport until both ends have confirmed that they read the schema the same way.
 
 ### 6.2 Server
 
@@ -132,7 +132,7 @@ dotnet run --project examples/EchoClient
 
 ### 6.3 UDP
 
-The client and server transports differ by one line each; the code above the transport layer is unchanged.
+Switching to UDP changes one line on the client and one on the server; the code above the transport layer stays the same.
 
 ```csharp
 var transport = UdpTransport.Connect(new IPEndPoint(IPAddress.Loopback, 7777));
@@ -140,11 +140,11 @@ var listener  = new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, 7777))
 ```
 
 The event sequence, the tick loop, and the heartbeat behavior are identical to the TCP case.
-UDP does not guarantee delivery, ordering, or deduplication of packets, and this library does not add any of these guarantees; datagrams are delivered to the application in the order they are received by the socket.
-Heartbeat and dead-peer detection are unaffected, because they are driven by elapsed time rather than by sequence numbers.
-A single UDP datagram carries at most 65,507 bytes of payload; a larger send is rejected by the transport rather than fragmented.
+UDP does not guarantee delivery, ordering, or deduplication of packets, and this library adds none of these guarantees; datagrams reach the application in the order the socket received them.
+Heartbeat and dead-peer detection are unaffected, because elapsed time drives them and sequence numbers play no part.
+A single UDP datagram carries at most 65,507 bytes of payload, and the transport rejects a larger send without fragmenting it.
 
-## 7. Schema Construction
+## 7. Schema construction
 
 The runtime does not compute a schema fingerprint.
 The application supplies, per message, the triple *(id, field count, prefix-fingerprint chain)*, and the runtime only compares these values during the handshake.
@@ -162,22 +162,22 @@ public static Schema Build() =>
         });
 ```
 
-These constants are emitted by `fomoxac` into a generated `Handshake.cs` file.
-The prefix chain is never transmitted in full: a peer sends its own field count and its own last fingerprint entry, and the comparison is performed at the smaller of the two field counts, per RFC-0002 §9.1.
+`fomoxac` writes these constants into a generated `Handshake.cs` file.
+The prefix chain is never sent in full: a peer sends its own field count and its last fingerprint entry, and the two sides compare at the smaller of the two field counts, per RFC-0002 §9.1.
 
 Two peers running schemas that differ can still connect, provided every message declared by both sides agrees on the fields both sides carry.
-A field appended at the end of a message, or removed from the end, is a valid version difference; RFC-0003 §8.6 vectors V-001 and V-002 require that this case not be rejected.
+A field appended at the end of a message, or removed from the end, is a valid version difference, and RFC-0003 §8.6 vectors V-001 and V-002 require that such a peer is accepted.
 A session is closed only when a field differs at an index carried by both ends.
 
 ## 8. Timekeeping
 
 `Tick(TimeSpan now)` receives the current instant as a parameter.
-No code in this library reads a system or wall clock on its own; this makes timeout and expiry behavior testable without waiting in real time.
+No code in this library reads a system or wall clock on its own, so timeout and expiry behavior can be tested without waiting in real time.
 
 `MonotonicClock.Now` is provided as a default time source.
-It is backed by `System.Diagnostics.Stopwatch`, not by wall-clock time, so a system clock adjustment cannot expire a running handshake or terminate a healthy connection.
+It is backed by `System.Diagnostics.Stopwatch`, a monotonic source, so a change to the system clock cannot expire a running handshake or end a healthy connection.
 
-### 8.1 SessionConfig Defaults
+### 8.1 SessionConfig defaults
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -186,13 +186,13 @@ It is backed by `System.Diagnostics.Stopwatch`, not by wall-clock time, so a sys
 | `HeartbeatTimeout` | 15 s | Duration an unanswered probe is allowed before the peer is declared dead |
 | `MaxFramesPerTick` | 64 | Maximum number of frames processed in a single tick, bounding the work one peer can impose per call |
 
-A probe is sent only after a period of silence, not on a fixed timer; a link carrying regular traffic produces no heartbeat frames.
-A peer is not disconnected without first being probed, so the maximum time to detect a dead peer is the sum of `HeartbeatInterval` and `HeartbeatTimeout` — 20 seconds with the defaults above.
+A probe is sent only after a period of silence, never on a fixed timer, so a link carrying regular traffic produces no heartbeat frames.
+No peer is disconnected without first being probed, so the longest time to detect a dead peer is `HeartbeatInterval` plus `HeartbeatTimeout`: 20 seconds with the defaults above.
 
-## 9. Payload Lifetime
+## 9. Payload lifetime
 
 `FomoxaEvent.Payload` references a buffer owned and reused by the connection.
-The reference is valid only until the next call to `Tick` on the same session; after that call, the referenced bytes are undefined.
+The reference is valid only until the next call to `Tick` on the same session, after which the bytes it points to are undefined.
 To retain a payload beyond the current tick, copy it explicitly.
 
 ```csharp
@@ -202,7 +202,7 @@ byte[] mine = raised.CopyPayload();
 Implementation guide §6.2 permits either this behavior or handing out an owned copy per event, and requires the choice to be documented.
 This library returns a reference into a reused buffer, which avoids an allocation on the receive path.
 
-## 10. Status and Event Enumerations
+## 10. Status and event enumerations
 
 | Enumeration | Values |
 |---|---|
@@ -212,9 +212,9 @@ This library returns a reference into a reused buffer, which avoids an allocatio
 | `SendStatus` | `Sent`, `NotReady`, `Congested`, `TooLarge`, `Closed` |
 | `SessionState` | `Handshaking`, `Ready`, `Closed` |
 
-## 11. Writing a Transport
+## 11. Writing a transport
 
-The `ITransport` interface defines the entire contract a transport must implement, expressed through the `TransportSignal` values below.
+The `ITransport` interface is the whole contract a transport implements, and it reports results through the `TransportSignal` values below.
 
 | Signal | Meaning |
 |---|---|
@@ -226,32 +226,32 @@ The `ITransport` interface defines the entire contract a transport must implemen
 | `NeedCapacity` | A packet arrived that does not fit in the supplied buffer; the required size is reported and the packet is retained |
 
 A transport declaring `TransportKind.Stream` is wrapped by a reassembly layer provided by this library.
-A transport declaring `TransportKind.Message` must deliver exactly one whole packet per call to `Receive`, never a partial one.
+A transport declaring `TransportKind.Message` must deliver exactly one whole packet per call to `Receive`.
 
-A transport implementation is responsible only for the operations defined by `ITransport`.
-It is not responsible for framing, ordering, retrying a blocked send, measuring time, or reconnecting.
+A transport implementation handles only the operations `ITransport` defines.
+Framing, ordering, retrying a blocked send, measuring time, and reconnecting are left to the runtime or the application.
 No method on `ITransport` may block, sleep, spawn a thread, or call back into the runtime.
 
-`TcpTransport` and `UdpTransport`, the two included implementations, are each on the order of a hundred lines; a new transport implementation is expected to be of similar size.
+`TcpTransport` and `UdpTransport`, the two included implementations, are each about a hundred lines, and a new transport should be of similar size.
 
-## 12. Explicit Non-Goals
+## 12. Non-goals
 
-- **No codec.** The `Writer`/`Reader` implementation of RFC-0002 is generated output from `fomoxac`. A second, hand-written implementation of the same wire format in this repository would risk drifting from the generated one while both continued to decode without error.
-- **No WebSocket, TLS, or QUIC transport**, and no extension point reserved for one. A transport for another protocol is implemented as a separate library against `ITransport`, without modification to this one.
-- **No background threads and no `async`.** Every socket operation is non-blocking, and the caller's `Tick` call drives all I/O, per invariant B2 of the implementation guide.
-- **No reconnection, no reordering, and no retransmission.** These behaviors are not part of the Fomoxa protocol; a transport that implemented them silently would cause the two ends to disagree about whether a session is still alive.
+- No codec. `fomoxac` generates the `Writer`/`Reader` implementation of RFC-0002. A second, hand-written implementation of the same wire format here could drift from the generated one while both kept decoding without error.
+- No WebSocket, TLS, or QUIC transport, and no extension point reserved for one. A transport for another protocol is a separate library written against `ITransport`, with no change to this one.
+- No background threads and no `async`. Every socket operation is non-blocking, and the caller's `Tick` call drives all I/O, per invariant B2 of the implementation guide.
+- No reconnection, reordering, or retransmission. The Fomoxa protocol has none of these, and a transport that did them silently would leave the two ends disagreeing about whether a session is still alive.
 
 ## 13. Tests
 
-`dotnet run --project tests/Fomoxa.Net.Tests` runs the test suite without an external test framework and without an additional package restore.
-As of this writing, the suite contains 72 checks, organized by the checklist in implementation guide §11:
+`dotnet run --project tests/Fomoxa.Net.Tests` runs the test suite with no external test framework and no extra package restore.
+The suite has 74 checks, organized by the checklist in implementation guide §11:
 
-- **Wire format** — byte-exact frames, a byte stream delivered one byte at a time, back-to-back frames, size ceilings at 16 MiB and 1 MiB, and the asymmetry where a malformed byte is fatal on a stream transport but costs only a single packet on a datagram transport.
-- **Handshake** — all four branches of the fingerprint comparison, the query round in both directions, a field appended by the client and a field removed by the server (both must be accepted), malformed hello frames, and an oversized declared message count that must not overflow.
-- **Heartbeat** — traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
-- **Core loop** — a blocked link retaining exactly one pending frame, congestion refused rather than queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
-- **End to end** — two peers over both transport kinds, including a byte stream delivered one byte at a time.
-- **Real sockets** — TCP and UDP on loopback, two UDP peers kept isolated from each other, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
+- Wire format: byte-exact frames, a byte stream delivered one byte at a time, back-to-back frames, size ceilings at 16 MiB and 1 MiB, and a malformed byte being fatal on a stream transport while it costs only one packet on a datagram transport.
+- Handshake: all four branches of the fingerprint comparison, the query round in both directions, a field appended by the client and a field removed by the server (both must be accepted), malformed hello frames, and an oversized declared message count that must not overflow.
+- Heartbeat: traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
+- Core loop: a blocked link retaining exactly one pending frame, congestion refused instead of queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
+- End to end: two peers over both transport kinds, including a byte stream delivered one byte at a time.
+- Real sockets: TCP and UDP on loopback, two UDP peers kept isolated from each other, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
 
 ## 14. License
 
