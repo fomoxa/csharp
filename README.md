@@ -236,22 +236,22 @@ No method on `ITransport` may block, sleep, spawn a thread, or call back into th
 
 ## 12. Explicit Non-Goals
 
-- **No codec.** The `Writer`/`Reader` implementation of RFC-0002 is generated output from `fomoxac`. A second, hand-written implementation of the same wire format in this repository would risk drifting from the generated one while both continued to decode without error.
-- **No WebSocket, TLS, or QUIC transport**, and no extension point reserved for one. A transport for another protocol is implemented as a separate library against `ITransport`, without modification to this one.
-- **No background threads and no `async`.** Every socket operation is non-blocking, and the caller's `Tick` call drives all I/O, per invariant B2 of the implementation guide.
-- **No reconnection, no reordering, and no retransmission.** These behaviors are not part of the Fomoxa protocol; a transport that implemented them silently would cause the two ends to disagree about whether a session is still alive.
+- No codec. The `Writer`/`Reader` implementation of RFC-0002 is generated output from `fomoxac`. A second, hand-written implementation of the same wire format in this repository would risk drifting from the generated one while both continued to decode without error.
+- No WebSocket, TLS, or QUIC transport, and no extension point reserved for one. A transport for another protocol is implemented as a separate library against `ITransport`, without modification to this one.
+- No background threads and no `async`. Every socket operation is non-blocking, and the caller's `Tick` call drives all I/O, per invariant B2 of the implementation guide.
+- No reconnection, no reordering, and no retransmission. These behaviors are not part of the Fomoxa protocol; a transport that implemented them silently would cause the two ends to disagree about whether a session is still alive.
 
 ## 13. Tests
 
 `dotnet run --project tests/Fomoxa.Net.Tests` runs the test suite without an external test framework and without an additional package restore.
 As of this writing, the suite contains 72 checks, organized by the checklist in implementation guide §11:
 
-- **Wire format** — byte-exact frames, a byte stream delivered one byte at a time, back-to-back frames, size ceilings at 16 MiB and 1 MiB, and the asymmetry where a malformed byte is fatal on a stream transport but costs only a single packet on a datagram transport.
-- **Handshake** — all four branches of the fingerprint comparison, the query round in both directions, a field appended by the client and a field removed by the server (both must be accepted), malformed hello frames, and an oversized declared message count that must not overflow.
-- **Heartbeat** — traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
-- **Core loop** — a blocked link retaining exactly one pending frame, congestion refused rather than queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
-- **End to end** — two peers over both transport kinds, including a byte stream delivered one byte at a time.
-- **Real sockets** — TCP and UDP on loopback, two UDP peers kept isolated from each other, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
+- Wire format — byte-exact frames, a byte stream delivered one byte at a time, back-to-back frames, size ceilings at 16 MiB and 1 MiB, and the asymmetry where a malformed byte is fatal on a stream transport but costs only a single packet on a datagram transport.
+- Handshake — all four branches of the fingerprint comparison, the query round in both directions, a field appended by the client and a field removed by the server (both must be accepted), malformed hello frames, and an oversized declared message count that must not overflow.
+- Heartbeat — traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
+- Core loop — a blocked link retaining exactly one pending frame, congestion refused rather than queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
+- End to end — two peers over both transport kinds, including a byte stream delivered one byte at a time.
+- Real sockets — TCP and UDP on loopback, two UDP peers kept isolated from each other, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
 
 ## 14. License
 
