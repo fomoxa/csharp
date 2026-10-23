@@ -19,7 +19,48 @@ namespace Fomoxa.Net.Tests
             TestRegistry.Add(Group, "a UDP server keeps two peers apart", UdpTwoPeers);
             TestRegistry.Add(Group, "a full UDP queue loses the oldest datagram, not the newest", UdpQueueDropsOldest);
             TestRegistry.Add(Group, "many unknown sources stop at the peer-table ceiling", UdpPeerTableStopsAtItsCeiling);
+            TestRegistry.Add(Group, "a UDP peer keeps its session when its source address changes", UdpPeerMigrates);
+            TestRegistry.Add(Group, "a UDP server drops unknown ids and short datagrams, and never moves a peer onto a taken address", UdpServerDropsWhatItShould);
+            TestRegistry.Add(Group, "a UDP client keeps the first id it receives", UdpClientKeepsFirstId);
             TestRegistry.Add(Group, "a TCP peer that hangs up is reported as a clean close", TcpPeerHangsUp);
+        }
+
+        private static byte[] Datagram(ulong sessionId, params byte[] frame)
+        {
+            var datagram = new byte[UdpTransport.HeaderSize + frame.Length];
+            BitConverter.GetBytes(sessionId).CopyTo(datagram, 0);
+            frame.CopyTo(datagram, UdpTransport.HeaderSize);
+            return datagram;
+        }
+
+        private static Socket UdpSender() => new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+        private static UdpPeerTransport AcceptFirst(UdpServerTransport listener)
+        {
+            for (var attempt = 0; attempt < 5_000; attempt++)
+            {
+                var outcome = listener.Accept();
+                if (outcome.Transport != null)
+                {
+                    return (UdpPeerTransport)outcome.Transport;
+                }
+                if (outcome.Status == AcceptStatus.Pending)
+                {
+                    Thread.Sleep(1);
+                }
+            }
+            throw new InvalidOperationException("no peer was accepted");
+        }
+
+        private static void Drain(UdpServerTransport listener)
+        {
+            for (var attempt = 0; attempt < 5_000; attempt++)
+            {
+                if (listener.Accept().Status == AcceptStatus.Pending)
+                {
+                    return;
+                }
+            }
         }
 
         private static Schema Shared() => Schemas.Of(0xABCD, Schemas.Message(1, 10, 20));
@@ -65,7 +106,7 @@ namespace Fomoxa.Net.Tests
             const int overflow = 8;
             for (var index = 0; index < UdpPeerTransport.QueueCeiling + overflow; index++)
             {
-                sender.SendTo(new[] { (byte)index }, listener.LocalEndPoint);
+                sender.SendTo(Datagram(0, (byte)index), listener.LocalEndPoint);
             }
             Thread.Sleep(200);
 
@@ -106,7 +147,7 @@ namespace Fomoxa.Net.Tests
                 {
                     var sender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                     senders.Add(sender);
-                    sender.SendTo(new byte[] { 1 }, listener.LocalEndPoint);
+                    sender.SendTo(Datagram(0, 1), listener.LocalEndPoint);
                 }
                 Thread.Sleep(200);
 
@@ -205,6 +246,97 @@ namespace Fomoxa.Net.Tests
             var message = Events.First(collected, FomoxaEventKind.Message);
             Check.Bytes(new byte[] { 0x11 }, message.Payload.Span, "payload");
             Check.Equal(1, Events.Count(collected, FomoxaEventKind.Message), "only one peer sent anything");
+        }
+
+        private static void UdpPeerMigrates()
+        {
+            using var listener = new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, 0));
+            using var before = UdpSender();
+            using var after = UdpSender();
+            before.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            after.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+
+            before.SendTo(Datagram(0, 1, 2), listener.LocalEndPoint);
+            var peer = AcceptFirst(listener);
+            Check.True(peer.SessionId != 0, "the server assigned a non-zero id");
+            var buffer = new byte[64];
+            Check.Bytes(new byte[] { 1, 2 }, buffer.AsSpan(0, peer.Receive(buffer).Count), "the first frame arrived without the header");
+
+            peer.Send(new byte[] { 9 });
+            var reply = new byte[64];
+            EndPoint source = new IPEndPoint(IPAddress.Any, 0);
+            Thread.Sleep(50);
+            int received = before.ReceiveFrom(reply, ref source);
+            Check.Equal(UdpTransport.HeaderSize + 1, received, "the reply carries the header and the frame");
+            Check.Equal(peer.SessionId, BitConverter.ToUInt64(reply, 0), "the reply carries the id of the peer");
+
+            after.SendTo(Datagram(peer.SessionId, 3), listener.LocalEndPoint);
+            Thread.Sleep(50);
+            Drain(listener);
+            Check.True(peer.Address.Equals(after.LocalEndPoint), "the peer moved to the new address");
+            Check.Bytes(new byte[] { 3 }, buffer.AsSpan(0, peer.Receive(buffer).Count), "the frame from the new address arrived");
+
+            peer.Send(new byte[] { 10 });
+            Thread.Sleep(50);
+            source = new IPEndPoint(IPAddress.Any, 0);
+            received = after.ReceiveFrom(reply, ref source);
+            Check.Equal(UdpTransport.HeaderSize + 1, received, "the reply now goes to the new address");
+        }
+
+        private static void UdpServerDropsWhatItShould()
+        {
+            using var listener = new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, 0));
+            using var first = UdpSender();
+            using var second = UdpSender();
+            first.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            second.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+
+            first.SendTo(Datagram(0, 1), listener.LocalEndPoint);
+            var peer = AcceptFirst(listener);
+            var buffer = new byte[64];
+            peer.Receive(buffer);
+
+            first.SendTo(new byte[UdpTransport.HeaderSize], listener.LocalEndPoint);
+            second.SendTo(Datagram(peer.SessionId + 1, 5), listener.LocalEndPoint);
+            Thread.Sleep(50);
+            Drain(listener);
+            Check.Equal(TransportSignal.WouldBlock, peer.Receive(buffer).Signal, "short datagrams and unknown ids reach nobody");
+            Check.True(!peer.Address.Equals(second.LocalEndPoint), "an unknown id does not move a peer");
+
+            second.SendTo(Datagram(0, 6), listener.LocalEndPoint);
+            var other = AcceptFirst(listener);
+            first.SendTo(Datagram(other.SessionId, 7), listener.LocalEndPoint);
+            Thread.Sleep(50);
+            Drain(listener);
+            Check.True(other.Address.Equals(second.LocalEndPoint), "a peer is not moved onto an address another peer holds");
+        }
+
+        private static void UdpClientKeepsFirstId()
+        {
+            using var server = UdpSender();
+            server.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            using var client = UdpTransport.Connect((IPEndPoint)server.LocalEndPoint!);
+
+            client.Send(new byte[] { 1 });
+            var request = new byte[64];
+            EndPoint from = new IPEndPoint(IPAddress.Any, 0);
+            Thread.Sleep(50);
+            server.ReceiveFrom(request, ref from);
+            Check.Equal(0UL, BitConverter.ToUInt64(request, 0), "the client sends id 0 before it knows its id");
+
+            server.SendTo(Datagram(0, 2), from);
+            server.SendTo(Datagram(11, 3), from);
+            server.SendTo(Datagram(22, 4), from);
+            Thread.Sleep(50);
+
+            var buffer = new byte[64];
+            Check.Equal(TransportSignal.Ok, client.Receive(buffer).Signal, "the first frame with a non-zero id arrived");
+            Check.Equal(TransportSignal.WouldBlock, client.Receive(buffer).Signal, "a frame with another id was dropped");
+
+            client.Send(new byte[] { 8 });
+            Thread.Sleep(50);
+            server.ReceiveFrom(request, ref from);
+            Check.Equal(11UL, BitConverter.ToUInt64(request, 0), "the client now sends the id it received");
         }
 
         private static void TcpPeerHangsUp()

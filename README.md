@@ -142,7 +142,7 @@ var listener  = new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, 7777))
 The event sequence, the tick loop, and the heartbeat behavior are identical to the TCP case.
 UDP does not guarantee delivery, ordering, or deduplication of packets, and this library adds none of these guarantees; datagrams reach the application in the order the socket received them.
 Heartbeat and dead-peer detection are unaffected, because elapsed time drives them and sequence numbers play no part.
-A single UDP datagram carries at most 65,507 bytes of payload, and the transport rejects a larger send without fragmenting it.
+A single UDP datagram carries at most 65,499 bytes of frame (65,507 minus the 8-byte session identifier), and the transport rejects a larger send without fragmenting it. The identifier at the start of each datagram lets a peer keep its session when its source address changes; `implementation-guide/en/03-udp-transport.md` defines it.
 
 ## 7. Schema construction
 
@@ -251,7 +251,7 @@ The suite has 74 checks, organized by the checklist in implementation guide §11
 - Heartbeat: traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
 - Core loop: a blocked link retaining exactly one pending frame, congestion refused instead of queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
 - End to end: two peers over both transport kinds, including a byte stream delivered one byte at a time.
-- Real sockets: TCP and UDP on loopback, two UDP peers kept isolated from each other, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
+- Real sockets: TCP and UDP on loopback, two UDP peers kept isolated from each other, a UDP peer that moves to a new source address keeping its session, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
 
 ## 14. License
 

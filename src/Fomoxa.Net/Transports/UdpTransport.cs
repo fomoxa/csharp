@@ -2,19 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 
 namespace Fomoxa.Net.Transports
 {
     public sealed class UdpTransport : ITransport
     {
         internal const int MaxDatagram = 65535;
-        internal const int MaxPayload = 65507;
+        internal const int HeaderSize = 8;
+        internal const int MaxPayload = 65507 - HeaderSize;
 
         private readonly Socket socket;
         private readonly IPEndPoint peer;
         private readonly byte[] inbox = new byte[MaxDatagram];
         private readonly byte[] sendScratch = new byte[MaxDatagram];
         private int inboxLength = -1;
+        private ulong sessionId;
         private bool released;
 
         public UdpTransport(Socket socket, IPEndPoint peer)
@@ -52,8 +55,9 @@ namespace Fomoxa.Net.Transports
             {
                 return SendOutcome.TooLarge;
             }
-            bytes.CopyTo(sendScratch);
-            return UdpSocket.SendTo(socket, sendScratch, bytes.Length, peer);
+            UdpSocket.WriteHeader(sendScratch, sessionId);
+            bytes.CopyTo(new Span<byte>(sendScratch, HeaderSize, bytes.Length));
+            return UdpSocket.SendTo(socket, sendScratch, HeaderSize + bytes.Length, peer);
         }
 
         public ReceiveOutcome Receive(Span<byte> buffer)
@@ -84,11 +88,17 @@ namespace Fomoxa.Net.Transports
                     {
                         continue;
                     }
-                    if (!peer.Equals(from))
+                    if (!peer.Equals(from) || count <= HeaderSize)
                     {
                         continue;
                     }
-                    inboxLength = count;
+                    ulong received = UdpSocket.ReadHeader(inbox);
+                    if (received == 0 || (sessionId != 0 && received != sessionId))
+                    {
+                        continue;
+                    }
+                    sessionId = received;
+                    inboxLength = count - HeaderSize;
                     break;
                 }
             }
@@ -97,7 +107,7 @@ namespace Fomoxa.Net.Transports
             {
                 return ReceiveOutcome.NeedCapacity(inboxLength);
             }
-            new ReadOnlySpan<byte>(inbox, 0, inboxLength).CopyTo(buffer);
+            new ReadOnlySpan<byte>(inbox, HeaderSize, inboxLength).CopyTo(buffer);
             int delivered = inboxLength;
             inboxLength = -1;
             return ReceiveOutcome.Ok(delivered);
@@ -125,6 +135,8 @@ namespace Fomoxa.Net.Transports
         private readonly Socket socket;
         private readonly Dictionary<IPEndPoint, UdpPeerTransport> peers =
             new Dictionary<IPEndPoint, UdpPeerTransport>();
+        private readonly Dictionary<ulong, UdpPeerTransport> sessions =
+            new Dictionary<ulong, UdpPeerTransport>();
         private readonly byte[] receiveScratch = new byte[UdpTransport.MaxDatagram];
         private readonly byte[] sendScratch = new byte[UdpTransport.MaxDatagram];
         private bool released;
@@ -162,7 +174,33 @@ namespace Fomoxa.Net.Transports
                     return AcceptOutcome.Error;
             }
 
+            if (count <= UdpTransport.HeaderSize)
+            {
+                return AcceptOutcome.Progress;
+            }
+
             var address = (IPEndPoint)from;
+            ulong sessionId = UdpSocket.ReadHeader(receiveScratch);
+            if (sessionId != 0)
+            {
+                if (!sessions.TryGetValue(sessionId, out var owner))
+                {
+                    return AcceptOutcome.Progress;
+                }
+                if (!owner.Address.Equals(address))
+                {
+                    if (peers.ContainsKey(address))
+                    {
+                        return AcceptOutcome.Progress;
+                    }
+                    peers.Remove(owner.Address);
+                    owner.Address = address;
+                    peers.Add(address, owner);
+                }
+                owner.Enqueue(receiveScratch, count);
+                return AcceptOutcome.Progress;
+            }
+
             if (peers.TryGetValue(address, out var known))
             {
                 known.Enqueue(receiveScratch, count);
@@ -179,9 +217,10 @@ namespace Fomoxa.Net.Transports
                 return AcceptOutcome.Progress;
             }
 
-            var created = new UdpPeerTransport(this, address);
+            var created = new UdpPeerTransport(this, address, NewSessionId());
             created.Enqueue(receiveScratch, count);
             peers.Add(address, created);
+            sessions.Add(created.SessionId, created);
             return AcceptOutcome.Accepted(created);
         }
 
@@ -193,10 +232,11 @@ namespace Fomoxa.Net.Transports
             }
             released = true;
             peers.Clear();
+            sessions.Clear();
             socket.Dispose();
         }
 
-        internal SendOutcome SendTo(IPEndPoint address, ReadOnlySpan<byte> bytes)
+        internal SendOutcome SendTo(IPEndPoint address, ulong sessionId, ReadOnlySpan<byte> bytes)
         {
             if (released)
             {
@@ -206,11 +246,30 @@ namespace Fomoxa.Net.Transports
             {
                 return SendOutcome.TooLarge;
             }
-            bytes.CopyTo(sendScratch);
-            return UdpSocket.SendTo(socket, sendScratch, bytes.Length, address);
+            UdpSocket.WriteHeader(sendScratch, sessionId);
+            bytes.CopyTo(new Span<byte>(sendScratch, UdpTransport.HeaderSize, bytes.Length));
+            return UdpSocket.SendTo(socket, sendScratch, UdpTransport.HeaderSize + bytes.Length, address);
         }
 
-        internal void Forget(IPEndPoint address) => peers.Remove(address);
+        internal void Forget(UdpPeerTransport peer)
+        {
+            peers.Remove(peer.Address);
+            sessions.Remove(peer.SessionId);
+        }
+
+        private ulong NewSessionId()
+        {
+            var bytes = new byte[UdpTransport.HeaderSize];
+            while (true)
+            {
+                RandomNumberGenerator.Fill(bytes);
+                ulong candidate = BitConverter.ToUInt64(bytes, 0);
+                if (candidate != 0 && !sessions.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
     }
 
     public sealed class UdpPeerTransport : ITransport
@@ -218,22 +277,30 @@ namespace Fomoxa.Net.Transports
         internal const int QueueCeiling = 64;
 
         private readonly UdpServerTransport owner;
-        private readonly IPEndPoint address;
+        private readonly ulong sessionId;
         private readonly Queue<byte[]> inbox = new Queue<byte[]>();
+        private IPEndPoint address;
         private bool released;
 
-        internal UdpPeerTransport(UdpServerTransport owner, IPEndPoint address)
+        internal UdpPeerTransport(UdpServerTransport owner, IPEndPoint address, ulong sessionId)
         {
             this.owner = owner;
             this.address = address;
+            this.sessionId = sessionId;
         }
 
         public TransportKind Kind => TransportKind.Message;
 
-        public IPEndPoint Address => address;
+        public IPEndPoint Address
+        {
+            get => address;
+            internal set => address = value;
+        }
+
+        internal ulong SessionId => sessionId;
 
         public SendOutcome Send(ReadOnlySpan<byte> bytes) =>
-            released ? SendOutcome.Closed : owner.SendTo(address, bytes);
+            released ? SendOutcome.Closed : owner.SendTo(address, sessionId, bytes);
 
         public ReceiveOutcome Receive(Span<byte> buffer)
         {
@@ -264,7 +331,7 @@ namespace Fomoxa.Net.Transports
             }
             released = true;
             inbox.Clear();
-            owner.Forget(address);
+            owner.Forget(this);
         }
 
         internal void Enqueue(byte[] source, int count)
@@ -276,8 +343,8 @@ namespace Fomoxa.Net.Transports
             {
                 inbox.Dequeue();
             }
-            var packet = new byte[count];
-            Buffer.BlockCopy(source, 0, packet, 0, count);
+            var packet = new byte[count - UdpTransport.HeaderSize];
+            Buffer.BlockCopy(source, UdpTransport.HeaderSize, packet, 0, packet.Length);
             inbox.Enqueue(packet);
         }
     }
@@ -294,6 +361,12 @@ namespace Fomoxa.Net.Transports
     internal static class UdpSocket
     {
         private const int SioUdpConnectionReset = -1744830452;
+
+        public static void WriteHeader(byte[] datagram, ulong sessionId) =>
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(datagram, sessionId);
+
+        public static ulong ReadHeader(byte[] datagram) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(datagram);
 
         public static Socket Create(AddressFamily family) =>
             new Socket(family, SocketType.Dgram, ProtocolType.Udp);
