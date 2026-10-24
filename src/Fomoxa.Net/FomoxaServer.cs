@@ -10,6 +10,7 @@ namespace Fomoxa.Net
         private readonly Schema schema;
         private readonly SessionConfig config;
         private readonly List<FomoxaConnection> peers = new List<FomoxaConnection>();
+        private readonly Dictionary<ulong, FomoxaConnection> peersById = new Dictionary<ulong, FomoxaConnection>();
         private readonly List<FomoxaEvent> events = new List<FomoxaEvent>();
 
         private ulong nextPeerId = 1;
@@ -36,8 +37,10 @@ namespace Fomoxa.Net
                 var outcome = listener.Accept();
                 if (outcome.Status == AcceptStatus.Accepted && outcome.Transport != null)
                 {
-                    peers.Add(new FomoxaConnection(
-                        outcome.Transport, schema, config, FomoxaRole.Server, now, nextPeerId));
+                    var peer = new FomoxaConnection(
+                        outcome.Transport, schema, config, FomoxaRole.Server, now, nextPeerId);
+                    peers.Add(peer);
+                    peersById.Add(nextPeerId, peer);
                     nextPeerId++;
                     budget--;
                     continue;
@@ -63,6 +66,7 @@ namespace Fomoxa.Net
             {
                 if (peers[index].IsClosed)
                 {
+                    peersById.Remove(peers[index].PeerId);
                     peers[index].Dispose();
                     peers.RemoveAt(index);
                 }
@@ -120,6 +124,7 @@ namespace Fomoxa.Net
                 peers[index].Dispose();
             }
             peers.Clear();
+            peersById.Clear();
             listener.Dispose();
         }
 
@@ -132,16 +137,7 @@ namespace Fomoxa.Net
             }
         }
 
-        private FomoxaConnection? Find(ulong peerId)
-        {
-            for (int index = 0; index < peers.Count; index++)
-            {
-                if (peers[index].PeerId == peerId)
-                {
-                    return peers[index];
-                }
-            }
-            return null;
-        }
+        private FomoxaConnection? Find(ulong peerId) =>
+            peersById.TryGetValue(peerId, out var peer) ? peer : null;
     }
 }

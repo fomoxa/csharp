@@ -23,6 +23,7 @@ namespace Fomoxa.Net.Tests
             TestRegistry.Add(Group, "a UDP server drops unknown ids and short datagrams, and never moves a peer onto a taken address", UdpServerDropsWhatItShould);
             TestRegistry.Add(Group, "a UDP client keeps the first id it receives", UdpClientKeepsFirstId);
             TestRegistry.Add(Group, "a TCP peer that hangs up is reported as a clean close", TcpPeerHangsUp);
+            TestRegistry.Add(Group, "after a peer in the middle leaves, a send by id still reaches the right peer", TcpSendByIdAfterAPeerLeaves);
         }
 
         private static byte[] Datagram(ulong sessionId, params byte[] frame)
@@ -366,6 +367,96 @@ namespace Fomoxa.Net.Tests
                 Events.First(serverEvents, FomoxaEventKind.Disconnected).Reason,
                 "the server saw a clean close");
             Check.Equal(0, server.PeerCount, "the peer was dropped");
+        }
+
+        private static void TcpSendByIdAfterAPeerLeaves()
+        {
+            var schema = Shared();
+            using var listener = new TcpListenerTransport(new IPEndPoint(IPAddress.Loopback, 0));
+            using var server = new FomoxaServer(listener, schema, Schemas.Config());
+            var clients = new List<FomoxaConnection>();
+            for (int index = 0; index < 3; index++)
+            {
+                clients.Add(FomoxaConnection.Connect(
+                    TcpTransport.Connect(listener.LocalEndPoint), schema, Schemas.Config(), TimeSpan.Zero));
+            }
+
+            try
+            {
+                var serverEvents = new List<FomoxaEvent>();
+                for (int round = 0; round < 400 && Events.Count(serverEvents, FomoxaEventKind.Ready) < 3; round++)
+                {
+                    serverEvents.AddRange(server.Tick(TimeSpan.Zero));
+                    foreach (var client in clients)
+                    {
+                        client.Tick(TimeSpan.Zero);
+                    }
+                    Thread.Sleep(2);
+                }
+                Check.Equal(3, Events.Count(serverEvents, FomoxaEventKind.Ready), "three peers became ready");
+
+                var ids = new List<ulong>(server.PeerIds());
+                foreach (ulong id in ids)
+                {
+                    Check.Equal(SendStatus.Sent, server.Send(id, 3, new byte[] { (byte)id }), "server sends to each peer");
+                }
+                var idOfClient = new ulong[clients.Count];
+                for (int index = 0; index < clients.Count; index++)
+                {
+                    idOfClient[index] = ReceiveOne(server, clients[index]).Span[0];
+                }
+
+                ulong leaving = ids[1];
+                int leavingClient = Array.IndexOf(idOfClient, leaving);
+                clients[leavingClient].Close();
+                clients[leavingClient].Dispose();
+                clients.RemoveAt(leavingClient);
+                var remainingIds = new List<ulong>(idOfClient);
+                remainingIds.RemoveAt(leavingClient);
+
+                for (int round = 0; round < 400 && server.PeerCount > 2; round++)
+                {
+                    server.Tick(TimeSpan.Zero);
+                    Thread.Sleep(2);
+                }
+                Check.Equal(2, server.PeerCount, "the leaving peer was dropped");
+                Check.Equal(SendStatus.Closed, server.Send(leaving, 3, new byte[] { 0 }), "a send to the dropped peer");
+
+                for (int index = clients.Count - 1; index >= 0; index--)
+                {
+                    Check.Equal(
+                        SendStatus.Sent,
+                        server.Send(remainingIds[index], 3, new byte[] { (byte)(0x80 | index) }),
+                        "server sends to a remaining peer");
+                }
+                for (int index = 0; index < clients.Count; index++)
+                {
+                    Check.Bytes(
+                        new byte[] { (byte)(0x80 | index) },
+                        ReceiveOne(server, clients[index]).Span,
+                        "each remaining client gets the message sent to its id");
+                }
+            }
+            finally
+            {
+                foreach (var client in clients)
+                {
+                    client.Dispose();
+                }
+            }
+        }
+
+        private static ReadOnlyMemory<byte> ReceiveOne(FomoxaServer server, FomoxaConnection client)
+        {
+            var clientEvents = new List<FomoxaEvent>();
+            for (int round = 0; round < 400 && !Events.Has(clientEvents, FomoxaEventKind.Message); round++)
+            {
+                server.Tick(TimeSpan.Zero);
+                clientEvents.AddRange(client.Tick(TimeSpan.Zero));
+                Thread.Sleep(2);
+            }
+            Check.Equal(1, Events.Count(clientEvents, FomoxaEventKind.Message), "the client got one message");
+            return Events.First(clientEvents, FomoxaEventKind.Message).Payload;
         }
 
         private static void Spin(
