@@ -16,26 +16,32 @@ namespace Fomoxa.Net.Transports
         Error,
         TooLarge,
         NeedCapacity,
+        Partial,
     }
 
     public readonly struct SendOutcome
     {
-        private SendOutcome(TransportSignal signal)
+        private SendOutcome(TransportSignal signal, int count)
         {
             Signal = signal;
+            Count = count;
         }
 
         public TransportSignal Signal { get; }
 
-        public static SendOutcome Ok => new SendOutcome(TransportSignal.Ok);
+        public int Count { get; }
 
-        public static SendOutcome WouldBlock => new SendOutcome(TransportSignal.WouldBlock);
+        public static SendOutcome Ok => new SendOutcome(TransportSignal.Ok, 0);
 
-        public static SendOutcome Closed => new SendOutcome(TransportSignal.Closed);
+        public static SendOutcome WouldBlock => new SendOutcome(TransportSignal.WouldBlock, 0);
 
-        public static SendOutcome Error => new SendOutcome(TransportSignal.Error);
+        public static SendOutcome Closed => new SendOutcome(TransportSignal.Closed, 0);
 
-        public static SendOutcome TooLarge => new SendOutcome(TransportSignal.TooLarge);
+        public static SendOutcome Error => new SendOutcome(TransportSignal.Error, 0);
+
+        public static SendOutcome TooLarge => new SendOutcome(TransportSignal.TooLarge, 0);
+
+        public static SendOutcome Partial(int byteCount) => new SendOutcome(TransportSignal.Partial, byteCount);
     }
 
     public readonly struct ReceiveOutcome

@@ -88,6 +88,8 @@ namespace Fomoxa.Net
 
         public ITransport Transport => transport;
 
+        public bool IsCongested => outboxUsed > 0;
+
         public IReadOnlyList<FomoxaEvent> Tick(TimeSpan now)
         {
             events.Clear();
@@ -160,7 +162,11 @@ namespace Fomoxa.Net
                     return SendStatus.Sent;
 
                 case TransportSignal.WouldBlock:
-                    StoreOutbox(scratch, frameSize);
+                    StoreOutbox(scratch, 0, frameSize);
+                    return SendStatus.Sent;
+
+                case TransportSignal.Partial:
+                    StoreOutbox(scratch, outcome.Count, frameSize - outcome.Count);
                     return SendStatus.Sent;
 
                 case TransportSignal.TooLarge:
@@ -337,7 +343,11 @@ namespace Fomoxa.Net
                     break;
 
                 case TransportSignal.WouldBlock:
-                    StoreOutbox(bytes, length);
+                    StoreOutbox(bytes, 0, length);
+                    break;
+
+                case TransportSignal.Partial:
+                    StoreOutbox(bytes, outcome.Count, length - outcome.Count);
                     break;
 
                 case TransportSignal.TooLarge:
@@ -367,6 +377,11 @@ namespace Fomoxa.Net
                     case TransportSignal.WouldBlock:
                         return;
 
+                    case TransportSignal.Partial:
+                        Buffer.BlockCopy(outbox, outcome.Count, outbox, 0, outboxUsed - outcome.Count);
+                        outboxUsed -= outcome.Count;
+                        break;
+
                     case TransportSignal.TooLarge:
                         outboxUsed = 0;
                         return;
@@ -382,13 +397,13 @@ namespace Fomoxa.Net
             }
         }
 
-        private void StoreOutbox(byte[] bytes, int length)
+        private void StoreOutbox(byte[] bytes, int offset, int length)
         {
             if (outbox.Length < length)
             {
                 outbox = new byte[length];
             }
-            Buffer.BlockCopy(bytes, 0, outbox, 0, length);
+            Buffer.BlockCopy(bytes, offset, outbox, 0, length);
             outboxUsed = length;
         }
 

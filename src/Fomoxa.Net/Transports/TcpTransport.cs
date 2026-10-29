@@ -7,8 +7,6 @@ namespace Fomoxa.Net.Transports
     public sealed class TcpTransport : ITransport
     {
         private readonly Socket socket;
-        private byte[] tail = Array.Empty<byte>();
-        private int tailUsed;
         private bool errored;
         private bool peerClosed;
         private bool released;
@@ -49,10 +47,6 @@ namespace Fomoxa.Net.Transports
                 return SendOutcome.Error;
             }
 
-            if (!FlushTail())
-            {
-                return errored ? SendOutcome.Error : SendOutcome.WouldBlock;
-            }
             if (bytes.Length == 0)
             {
                 return SendOutcome.Ok;
@@ -70,7 +64,7 @@ namespace Fomoxa.Net.Transports
             }
             if (sent < bytes.Length)
             {
-                KeepTail(bytes.Slice(sent));
+                return SendOutcome.Partial(sent);
             }
             return SendOutcome.Ok;
         }
@@ -90,11 +84,6 @@ namespace Fomoxa.Net.Transports
                 return ReceiveOutcome.Closed;
             }
 
-            FlushTail();
-            if (errored)
-            {
-                return ReceiveOutcome.Error;
-            }
             if (buffer.Length == 0)
             {
                 return ReceiveOutcome.WouldBlock;
@@ -143,45 +132,7 @@ namespace Fomoxa.Net.Transports
                 return;
             }
             released = true;
-            tail = Array.Empty<byte>();
-            tailUsed = 0;
             socket.Dispose();
-        }
-
-        private bool FlushTail()
-        {
-            while (tailUsed > 0)
-            {
-                int sent = socket.Send(
-                    new ReadOnlySpan<byte>(tail, 0, tailUsed), SocketFlags.None, out SocketError error);
-                if (error != SocketError.Success && error != SocketError.WouldBlock)
-                {
-                    errored = true;
-                    return false;
-                }
-                if (sent <= 0)
-                {
-                    return false;
-                }
-                if (sent >= tailUsed)
-                {
-                    tailUsed = 0;
-                    break;
-                }
-                Buffer.BlockCopy(tail, sent, tail, 0, tailUsed - sent);
-                tailUsed -= sent;
-            }
-            return true;
-        }
-
-        private void KeepTail(ReadOnlySpan<byte> remainder)
-        {
-            if (tail.Length < remainder.Length)
-            {
-                tail = new byte[remainder.Length];
-            }
-            remainder.CopyTo(tail);
-            tailUsed = remainder.Length;
         }
 
         private static IPAddress Resolve(string host)

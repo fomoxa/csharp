@@ -14,6 +14,8 @@ namespace Fomoxa.Net.Tests
             TestRegistry.Add(Group, "a blocked link parks the frame and sends it once, later", BlockedFrameIsParked);
             TestRegistry.Add(Group, "sending again while parked is refused instead of queued", SecondSendIsRefused);
             TestRegistry.Add(Group, "a parked frame goes out before anything else", ParkedFrameGoesFirst);
+            TestRegistry.Add(Group, "a partial send keeps the rest in the connection and reports congestion", PartialSendIsKept);
+            TestRegistry.Add(Group, "the rest of a partial send leaves in several pieces, in order", PartialRestLeavesInPieces);
             TestRegistry.Add(Group, "a frame past the link's ceiling fails the send but not the session", TooLargeKeepsSessionAlive);
             TestRegistry.Add(Group, "a packet larger than the buffer is kept, not lost", NeedCapacityKeepsPacket);
             TestRegistry.Add(Group, "shrinking after a packet burst still delivers the next message", ShrinkAfterAPacketBurstStillDeliversTheNextMessage);
@@ -90,6 +92,46 @@ namespace Fomoxa.Net.Tests
 
             Check.Bytes(Wire.DataFrame(1, new byte[] { 0xAA }), transport.TakeOutgoing(), "the parked frame is first");
             Check.Bytes(new byte[] { (byte)FrameType.Pong }, transport.TakeOutgoing(), "the answer follows it");
+        }
+
+        private static void PartialSendIsKept()
+        {
+            var side = ReadyClient(out var transport, TransportKind.Stream);
+            var frame = Wire.DataFrame(9, new byte[] { 1, 2, 3, 4, 5 });
+            transport.AcceptedPerSend = 3;
+
+            Check.Equal(SendStatus.Sent, side.Connection.Send(9, new byte[] { 1, 2, 3, 4, 5 }), "the send is accepted");
+            Check.True(side.Connection.IsCongested, "the rest waits in the connection");
+            Check.Equal(SendStatus.Congested, side.Connection.Send(2, new byte[] { 2 }), "a second send is refused");
+
+            transport.AcceptedPerSend = int.MaxValue;
+            side.Connection.Tick(TimeSpan.Zero);
+
+            Check.False(side.Connection.IsCongested, "the rest went out");
+            Check.Bytes(frame, Joined(transport), "the frame arrives whole and once");
+        }
+
+        private static void PartialRestLeavesInPieces()
+        {
+            var side = ReadyClient(out var transport, TransportKind.Stream);
+            var payload = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+            transport.AcceptedPerSend = 4;
+
+            side.Connection.Send(9, payload);
+            side.Connection.Tick(TimeSpan.Zero);
+
+            Check.False(side.Connection.IsCongested, "every piece left within the tick");
+            Check.Bytes(Wire.DataFrame(9, payload), Joined(transport), "the pieces join into the frame");
+        }
+
+        private static byte[] Joined(FakeTransport transport)
+        {
+            var joined = new System.Collections.Generic.List<byte>();
+            while (transport.Outgoing.Count > 0)
+            {
+                joined.AddRange(transport.TakeOutgoing());
+            }
+            return joined.ToArray();
         }
 
         private static void TooLargeKeepsSessionAlive()
@@ -334,9 +376,9 @@ namespace Fomoxa.Net.Tests
                 "a peer that stops reading is not keeping up, not a broken link");
         }
 
-        private static Side ReadyClient(out FakeTransport transport)
+        private static Side ReadyClient(out FakeTransport transport, TransportKind kind = TransportKind.Message)
         {
-            transport = new FakeTransport(TransportKind.Message);
+            transport = new FakeTransport(kind);
             var schema = Schemas.Of(1, Schemas.Message(1, 10));
             var connection = new FomoxaConnection(
                 transport, schema, Schemas.Config(), FomoxaRole.Client, TimeSpan.Zero);

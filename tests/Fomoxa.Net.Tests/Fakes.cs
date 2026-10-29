@@ -23,6 +23,8 @@ namespace Fomoxa.Net.Tests
 
         public int SendCeiling { get; set; } = int.MaxValue;
 
+        public int AcceptedPerSend { get; set; } = int.MaxValue;
+
         public bool ReportClosed { get; set; }
 
         public bool ReportError { get; set; }
@@ -51,6 +53,11 @@ namespace Fomoxa.Net.Tests
             if (BlockSends)
             {
                 return SendOutcome.WouldBlock;
+            }
+            if (bytes.Length > AcceptedPerSend)
+            {
+                Outgoing.Enqueue(bytes.Slice(0, AcceptedPerSend).ToArray());
+                return SendOutcome.Partial(AcceptedPerSend);
             }
             Outgoing.Enqueue(bytes.ToArray());
             return SendOutcome.Ok;

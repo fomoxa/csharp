@@ -224,8 +224,10 @@ The `ITransport` interface is the whole contract a transport implements, and it 
 | `Error` | The underlying link failed |
 | `TooLarge` | The frame exceeds the transport's limit; the frame is not retried, and the session continues |
 | `NeedCapacity` | A packet arrived that does not fit in the supplied buffer; the required size is reported and the packet is retained |
+| `Partial` | A `Stream` transport took only the first `Count` bytes of a send; the connection keeps the rest and sends it before any new frame |
 
 A transport declaring `TransportKind.Stream` is wrapped by a reassembly layer provided by this library.
+When a `Stream` transport can take only part of a send, it returns `SendOutcome.Partial(count)` and keeps nothing; the connection holds the rest, and `FomoxaConnection.IsCongested` stays true until it has gone out. `TcpTransport` works this way, as the Rust `TcpTransport` does.
 A transport declaring `TransportKind.Message` must deliver exactly one whole packet per call to `Receive`.
 
 A transport implementation handles only the operations `ITransport` defines.
@@ -244,12 +246,12 @@ No method on `ITransport` may block, sleep, spawn a thread, or call back into th
 ## 13. Tests
 
 `dotnet run --project tests/Fomoxa.Net.Tests` runs the test suite with no external test framework and no extra package restore.
-The suite has 74 checks, organized by the checklist in implementation guide §11:
+The suite has 80 checks, organized by the checklist in implementation guide §11:
 
 - Wire format: byte-exact frames, a byte stream delivered one byte at a time, back-to-back frames, size ceilings at 16 MiB and 1 MiB, and a malformed byte being fatal on a stream transport while it costs only one packet on a datagram transport.
 - Handshake: all four branches of the fingerprint comparison, the query round in both directions, a field appended by the client and a field removed by the server (both must be accepted), malformed hello frames, and an oversized declared message count that must not overflow.
 - Heartbeat: traffic suppressing probes, exactly one probe per silence window, any frame clearing a pending probe, and a full expiry cycle verified without real-time waiting.
-- Core loop: a blocked link retaining exactly one pending frame, congestion refused instead of queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
+- Core loop: a blocked link retaining exactly one pending frame, the rest of a partial send kept by the connection, congestion refused instead of queued, `NeedCapacity` not discarding the packet, `TooLarge` not terminating the session, the per-tick frame budget, and exactly one terminal event per session.
 - End to end: two peers over both transport kinds, including a byte stream delivered one byte at a time.
 - Real sockets: TCP and UDP on loopback, two UDP peers kept isolated from each other, a UDP peer that moves to a new source address keeping its session, a full UDP receive queue dropping the oldest datagram, and the peer-table ceiling under many unknown source addresses.
 
