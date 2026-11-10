@@ -6,5 +6,6 @@ namespace Fomoxa.Net
         Ping = 1,
         Pong = 2,
         Handshake = 3,
+        HandshakePart = 4,
     }
 }

@@ -82,6 +82,23 @@ namespace Fomoxa.Net.Framing
                     return bytes.Length < headerSize + payloadLength ? FrameScan.Incomplete : FrameScan.Ok;
                 }
 
+                case (byte)FrameType.HandshakePart:
+                {
+                    if (bytes.Length < FomoxaWire.HandshakePartHeaderSize)
+                    {
+                        return FrameScan.Incomplete;
+                    }
+                    uint declared = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(5, 4));
+                    if (declared > FomoxaWire.HandshakePartContent)
+                    {
+                        return FrameScan.Corrupt;
+                    }
+                    type = FrameType.HandshakePart;
+                    headerSize = 1;
+                    payloadLength = FomoxaWire.HandshakePartHeaderSize - 1 + (int)declared;
+                    return bytes.Length < headerSize + payloadLength ? FrameScan.Incomplete : FrameScan.Ok;
+                }
+
                 default:
                     return FrameScan.Corrupt;
             }
@@ -107,6 +124,18 @@ namespace Fomoxa.Net.Framing
         {
             destination[0] = (byte)FrameType.Handshake;
             BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(1, 4), (uint)payloadLength);
+        }
+
+        public static int HandshakePartFrameSize(int contentLength) =>
+            FomoxaWire.HandshakePartHeaderSize + contentLength;
+
+        public static void WriteHandshakePart(Span<byte> destination, int index, int count, ReadOnlySpan<byte> content)
+        {
+            destination[0] = (byte)FrameType.HandshakePart;
+            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(1, 2), (ushort)index);
+            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(3, 2), (ushort)count);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(5, 4), (uint)content.Length);
+            content.CopyTo(destination.Slice(FomoxaWire.HandshakePartHeaderSize));
         }
 
         public static void WritePing(Span<byte> destination) => destination[0] = (byte)FrameType.Ping;

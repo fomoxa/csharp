@@ -41,6 +41,11 @@ namespace Fomoxa.Net.Framing
             }
 
             var window = buffer.AsSpan(start, end - start);
+            if (window.Length > 0 && window[0] == (byte)FrameType.HandshakePart)
+            {
+                poisoned = true;
+                return FrameScan.Corrupt;
+            }
             var scan = FrameLayout.Scan(window, out type, out messageId, out int headerSize, out int declared);
             switch (scan)
             {

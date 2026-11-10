@@ -16,6 +16,7 @@ namespace Fomoxa.Net.Tests
         {
             TestRegistry.Add(Group, "TCP carries a handshake and a message each way", TcpRoundTrip);
             TestRegistry.Add(Group, "UDP carries a handshake and a message each way", UdpRoundTrip);
+            TestRegistry.Add(Group, "UDP carries a 300-message handshake in datagrams of at most 908 bytes", UdpLargeHandshake);
             TestRegistry.Add(Group, "a UDP server keeps two peers apart", UdpTwoPeers);
             TestRegistry.Add(Group, "a full UDP queue loses the oldest datagram, not the newest", UdpQueueDropsOldest);
             TestRegistry.Add(Group, "many unknown sources stop at the peer-table ceiling", UdpPeerTableStopsAtItsCeiling);
@@ -211,6 +212,31 @@ namespace Fomoxa.Net.Tests
                 new byte[] { 8 },
                 Events.First(clientEvents, FomoxaEventKind.Message).Payload.Span,
                 "payload at the client");
+        }
+
+        private static void UdpLargeHandshake()
+        {
+            var messages = new MessageSchema[300];
+            for (uint id = 1; id <= messages.Length; id++)
+            {
+                messages[id - 1] = Schemas.Message(id, id);
+            }
+            var schema = Schemas.Of(0x5EED, messages);
+            using var listener = new UdpServerTransport(new IPEndPoint(IPAddress.Loopback, 0));
+            using var server = new FomoxaServer(listener, schema, Schemas.Config());
+            using var client = FomoxaConnection.Connect(
+                UdpTransport.Connect(listener.LocalEndPoint), schema, Schemas.Config(), TimeSpan.Zero);
+
+            var serverEvents = new List<FomoxaEvent>();
+            var clientEvents = new List<FomoxaEvent>();
+            Spin(server, client, serverEvents, clientEvents,
+                () => client.IsReady && Events.Has(serverEvents, FomoxaEventKind.Ready));
+
+            Check.True(client.IsReady, "the client became ready");
+            Check.True(Events.Has(serverEvents, FomoxaEventKind.Ready), "the server accepted the peer");
+            Check.True(
+                UdpTransport.HeaderSize + FomoxaWire.PacketHandshakeBudget <= 908,
+                "a handshake datagram is at most 908 bytes");
         }
 
         private static void UdpTwoPeers()

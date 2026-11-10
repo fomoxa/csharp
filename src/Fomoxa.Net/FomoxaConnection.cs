@@ -31,6 +31,11 @@ namespace Fomoxa.Net
         private byte[] outbox = new byte[0];
         private int outboxUsed;
         private byte[] scratch = new byte[0];
+        private byte[] partBuffer = Array.Empty<byte>();
+        private readonly bool packetTransport;
+        private readonly HandshakeAssembler assembler = new HandshakeAssembler();
+        private readonly Queue<PendingPacket> pendingPackets = new Queue<PendingPacket>();
+        private int pendingCountedBytes;
 
         private bool transportDead;
         private bool gracefulDeath;
@@ -59,9 +64,10 @@ namespace Fomoxa.Net
             }
             this.config = (config ?? new SessionConfig()).Clone();
             this.peerId = peerId;
-            frameSource = transport.Kind == TransportKind.Stream
-                ? (IFrameSource)new StreamFrameSource(transport)
-                : new MessageFrameSource(transport);
+            packetTransport = transport.Kind == TransportKind.Message;
+            frameSource = packetTransport
+                ? (IFrameSource)new MessageFrameSource(transport)
+                : new StreamFrameSource(transport);
             session = new Session(role, schema, this.config, now);
 
             var opening = session.Start();
@@ -88,7 +94,7 @@ namespace Fomoxa.Net
 
         public ITransport Transport => transport;
 
-        public bool IsCongested => outboxUsed > 0;
+        public bool IsCongested => outboxUsed > 0 || pendingPackets.Count > 0;
 
         public IReadOnlyList<FomoxaEvent> Tick(TimeSpan now)
         {
@@ -101,7 +107,7 @@ namespace Fomoxa.Net
                 events.Add(FomoxaEvent.Connected(peerId));
             }
 
-            if (!transportDead && outboxUsed > 0)
+            if (!transportDead && IsCongested)
             {
                 Flush();
             }
@@ -150,7 +156,7 @@ namespace Fomoxa.Net
             }
             FrameLayout.WriteDataFrame(scratch.AsSpan(0, frameSize), messageId, payload);
 
-            if (outboxUsed > 0)
+            if (IsCongested)
             {
                 return SendStatus.Congested;
             }
@@ -162,10 +168,10 @@ namespace Fomoxa.Net
                     return SendStatus.Sent;
 
                 case TransportSignal.WouldBlock:
-                    StoreOutbox(scratch, 0, frameSize);
-                    return SendStatus.Sent;
+                    Hold(scratch, frameSize, true);
+                    return transportDead ? SendStatus.Closed : SendStatus.Sent;
 
-                case TransportSignal.Partial:
+                case TransportSignal.Partial when !packetTransport:
                     StoreOutbox(scratch, outcome.Count, frameSize - outcome.Count);
                     return SendStatus.Sent;
 
@@ -193,6 +199,8 @@ namespace Fomoxa.Net
             }
             session.CloseLocal();
             outboxUsed = 0;
+            pendingPackets.Clear();
+            pendingCountedBytes = 0;
             transportDead = true;
             transport.CloseGracefully();
         }
@@ -225,6 +233,15 @@ namespace Fomoxa.Net
             {
                 scratch = Array.Empty<byte>();
             }
+            if (partBuffer.Length > 0)
+            {
+                partBuffer = Array.Empty<byte>();
+            }
+            if (pendingPackets.Count == 0)
+            {
+                pendingPackets.TrimExcess();
+            }
+            assembler.ShrinkToFit();
         }
 
         private void Drain(TimeSpan now)
@@ -238,7 +255,7 @@ namespace Fomoxa.Net
                 switch (status)
                 {
                     case FrameSourceStatus.Frame:
-                        Apply(session.HandleFrame(frame.Type, frame.Payload, now), frame);
+                        Apply(Handle(frame, now), frame);
                         budget--;
                         if (session.IsClosed || transportDead)
                         {
@@ -257,6 +274,45 @@ namespace Fomoxa.Net
                         Kill(false);
                         return;
                 }
+            }
+        }
+
+        private SessionAction Handle(SourcedFrame frame, TimeSpan now)
+        {
+            if (frame.Type == FrameType.HandshakePart)
+            {
+                return HandlePart(frame.Payload, now);
+            }
+            if (frame.Type == FrameType.Handshake && assembler.IsPending)
+            {
+                assembler.Reset();
+                return session.HandleFrame(FrameType.Handshake, ReadOnlySpan<byte>.Empty, now);
+            }
+            return session.HandleFrame(frame.Type, frame.Payload, now);
+        }
+
+        private SessionAction HandlePart(ReadOnlySpan<byte> part, TimeSpan now)
+        {
+            if (session.State != SessionState.Handshaking)
+            {
+                return SessionAction.Nothing;
+            }
+
+            switch (assembler.Add(part))
+            {
+                case AssemblyStatus.Pending:
+                    return session.HandleFrame(FrameType.HandshakePart, ReadOnlySpan<byte>.Empty, now);
+
+                case AssemblyStatus.Complete:
+                {
+                    var action = session.HandleFrame(FrameType.Handshake, assembler.Content, now);
+                    assembler.Reset();
+                    return action;
+                }
+
+                default:
+                    assembler.Reset();
+                    return session.HandleFrame(FrameType.Handshake, ReadOnlySpan<byte>.Empty, now);
             }
         }
 
@@ -326,13 +382,43 @@ namespace Fomoxa.Net
 
         private void WriteControl(byte[] bytes, int length)
         {
+            if (packetTransport
+                && length > FomoxaWire.PacketHandshakeBudget
+                && bytes[0] == (byte)FrameType.Handshake)
+            {
+                WriteHandshakeParts(new ReadOnlySpan<byte>(
+                    bytes, FomoxaWire.HandshakeFrameHeaderSize, length - FomoxaWire.HandshakeFrameHeaderSize));
+                return;
+            }
+            WriteFrame(bytes, length, true);
+        }
+
+        private void WriteHandshakeParts(ReadOnlySpan<byte> content)
+        {
+            int count = (content.Length + FomoxaWire.HandshakePartContent - 1) / FomoxaWire.HandshakePartContent;
+            if (partBuffer.Length < FomoxaWire.PacketHandshakeBudget)
+            {
+                partBuffer = new byte[FomoxaWire.PacketHandshakeBudget];
+            }
+
+            for (int index = 0; index < count && !transportDead; index++)
+            {
+                int offset = index * FomoxaWire.HandshakePartContent;
+                int partLength = Math.Min(FomoxaWire.HandshakePartContent, content.Length - offset);
+                FrameLayout.WriteHandshakePart(partBuffer, index, count, content.Slice(offset, partLength));
+                WriteFrame(partBuffer, FrameLayout.HandshakePartFrameSize(partLength), false);
+            }
+        }
+
+        private void WriteFrame(byte[] bytes, int length, bool counted)
+        {
             if (transportDead)
             {
                 return;
             }
-            if (outboxUsed > 0)
+            if (IsCongested)
             {
-                AppendOutbox(bytes, length);
+                Hold(bytes, length, counted);
                 return;
             }
 
@@ -343,10 +429,10 @@ namespace Fomoxa.Net
                     break;
 
                 case TransportSignal.WouldBlock:
-                    StoreOutbox(bytes, 0, length);
+                    Hold(bytes, length, counted);
                     break;
 
-                case TransportSignal.Partial:
+                case TransportSignal.Partial when !packetTransport:
                     StoreOutbox(bytes, outcome.Count, length - outcome.Count);
                     break;
 
@@ -365,6 +451,12 @@ namespace Fomoxa.Net
 
         private void Flush()
         {
+            if (packetTransport)
+            {
+                FlushPackets();
+                return;
+            }
+
             while (outboxUsed > 0)
             {
                 var outcome = transport.Send(new ReadOnlySpan<byte>(outbox, 0, outboxUsed));
@@ -394,6 +486,65 @@ namespace Fomoxa.Net
                         Kill(false);
                         return;
                 }
+            }
+        }
+
+        private void FlushPackets()
+        {
+            while (pendingPackets.Count > 0)
+            {
+                var packet = pendingPackets.Peek();
+                var outcome = transport.Send(packet.Bytes);
+                switch (outcome.Signal)
+                {
+                    case TransportSignal.Ok:
+                    case TransportSignal.TooLarge:
+                        pendingPackets.Dequeue();
+                        if (packet.Counted)
+                        {
+                            pendingCountedBytes -= packet.Bytes.Length;
+                        }
+                        break;
+
+                    case TransportSignal.WouldBlock:
+                        return;
+
+                    case TransportSignal.Closed:
+                        Kill(true);
+                        return;
+
+                    default:
+                        Kill(false);
+                        return;
+                }
+            }
+        }
+
+        private void Hold(byte[] bytes, int length, bool counted)
+        {
+            if (!packetTransport)
+            {
+                if (outboxUsed > 0)
+                {
+                    AppendOutbox(bytes, length);
+                }
+                else
+                {
+                    StoreOutbox(bytes, 0, length);
+                }
+                return;
+            }
+
+            if (counted && pendingCountedBytes + length > MaxOutboxBytes)
+            {
+                overloaded = true;
+                Kill(false);
+                return;
+            }
+            pendingPackets.Enqueue(new PendingPacket(new ReadOnlySpan<byte>(bytes, 0, length).ToArray(), counted));
+            if (counted)
+            {
+                pendingCountedBytes += length;
             }
         }
 
@@ -428,6 +579,19 @@ namespace Fomoxa.Net
             }
             Buffer.BlockCopy(bytes, 0, outbox, outboxUsed, length);
             outboxUsed += length;
+        }
+
+        private readonly struct PendingPacket
+        {
+            public PendingPacket(byte[] bytes, bool counted)
+            {
+                Bytes = bytes;
+                Counted = counted;
+            }
+
+            public byte[] Bytes { get; }
+
+            public bool Counted { get; }
         }
 
         private void Kill(bool graceful)

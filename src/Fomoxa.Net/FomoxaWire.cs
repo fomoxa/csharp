@@ -15,6 +15,11 @@ namespace Fomoxa.Net
         public const int MaxHandshakePayload = 1024 * 1024;
         public const int MaxHandshakeFrameSize = HandshakeFrameHeaderSize + MaxHandshakePayload;
 
+        public const int HandshakePartHeaderSize = 9;
+        public const int PacketHandshakeBudget = 900;
+        public const int HandshakePartContent = PacketHandshakeBudget - HandshakePartHeaderSize;
+        public const int MaxHandshakeParts = (MaxHandshakePayload + HandshakePartContent - 1) / HandshakePartContent;
+
         public const int MaxHelloMessages = 1_000_000;
         public const int MaxQueryItems = 1_000_000;
 

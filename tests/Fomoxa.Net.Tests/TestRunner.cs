@@ -80,6 +80,7 @@ namespace Fomoxa.Net.Tests
         {
             FrameTests.Register();
             HandshakeTests.Register();
+            HandshakePartTests.Register();
             HeartbeatTests.Register();
             FlowTests.Register();
             InteropTests.Register();

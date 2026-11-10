@@ -133,6 +133,9 @@ namespace Fomoxa.Net
                         ? SessionAction.Event(SessionEmit.Message)
                         : SessionAction.Nothing;
 
+                case FrameType.HandshakePart:
+                    return SessionAction.Nothing;
+
                 default:
                     return role == FomoxaRole.Client
                         ? ClientHandshake(payload)
