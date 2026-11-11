@@ -143,6 +143,7 @@ The event sequence, the tick loop, and the heartbeat behavior are identical to t
 UDP does not guarantee delivery, ordering, or deduplication of packets, and this library adds none of these guarantees; datagrams reach the application in the order the socket received them.
 Heartbeat and dead-peer detection are unaffected, because elapsed time drives them and sequence numbers play no part.
 A single UDP datagram carries at most 65,499 bytes of frame (65,507 minus the 8-byte session identifier), and the transport rejects a larger send without fragmenting it. The identifier at the start of each datagram lets a peer keep its session when its source address changes; `implementation-guide/en/03-udp-transport.md` defines it.
+`UdpServerTransport` queues at most 64 datagrams per peer and drops the oldest once that queue is full. A handshake body that arrives in more than 64 parts, which is a greeting of more than about 4,000 messages, can therefore lose its first parts when they come in together, and the handshake then expires (`implementation-guide/en/02-flows.md` §2.8).
 
 ## 7. Schema construction
 
